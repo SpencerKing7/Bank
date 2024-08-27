@@ -78,36 +78,11 @@ export default function Mobile() {
 
   return (
     <>
-      <Typography sx={{ textAlign: "center", fontWeight: 800, fontSize: "5rem" }}>Bank! (Mobile)</Typography>
+      <Typography sx={{ textAlign: "center", fontWeight: 800, fontSize: "5rem" }}>Bank!</Typography>
       <Box sx={{ p: "2rem" }}>
         {/* Left */}
         <Grid container spacing={2}>
-          <Grid item xs={6}>
-            <Grid container spacing={3}>
-              {numbers.dice.map((diceSide) => (
-                <Grid item xs={4} key={diceSide.value}>
-                  <Card sx={(rollNum > 3 && diceSide.value === 7) ? styles.cardDanger : styles.card} onClick={() => clickNumber(diceSide.value)}>
-                    <CardContent sx={styles.cardContent}>
-                      {diceSide.value}
-                    </CardContent>
-                  </Card>
-                </Grid>
-              ))}
-              <Grid item xs={4}>
-                <Card sx={rollNum > 3 ? styles.cardGreen : styles.card} onClick={clickDoubles}>
-                  <CardContent sx={styles.cardContent}>doubles</CardContent>
-                </Card>
-              </Grid>
-              <Grid item xs={12}>
-                <Card onClick={reset} sx={styles.card}>
-                  <CardContent sx={styles.cardContent}>Reset</CardContent>
-                </Card>
-              </Grid>
-            </Grid>
-          </Grid>
-
-          {/* Right */}
-          <Grid item xs={6}>
+          <Grid item xs={12}>
             <Typography sx={{ textAlign: "right" }}>Round: {roundNum}/20</Typography>
             <Typography
               sx={{
@@ -122,6 +97,31 @@ export default function Mobile() {
             >
               {roundTotal}
             </Typography>
+          </Grid>
+        </Grid>
+
+        {/* Right */}
+        <Grid item xs={12}>
+          <Grid container spacing={3}>
+            {numbers.dice.map((diceSide) => (
+              <Grid item xs={4} key={diceSide.value}>
+                <Card sx={(rollNum > 3 && diceSide.value === 7) ? styles.cardDanger : styles.card} onClick={() => clickNumber(diceSide.value)}>
+                  <CardContent sx={styles.cardContent}>
+                    {diceSide.value}
+                  </CardContent>
+                </Card>
+              </Grid>
+            ))}
+            <Grid item xs={4}>
+              <Card sx={rollNum > 3 ? styles.cardGreen : styles.card} onClick={clickDoubles}>
+                <CardContent sx={styles.cardContent}>doubles</CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12}>
+              <Card onClick={reset} sx={styles.card}>
+                <CardContent sx={styles.cardContent}>Reset</CardContent>
+              </Card>
+            </Grid>
           </Grid>
         </Grid>
       </Box>
