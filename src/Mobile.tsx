@@ -78,7 +78,7 @@ export default function Mobile() {
 
   return (
     <>
-      <Typography sx={{ textAlign: "center", fontWeight: 800, fontSize: "5rem" }}>Bank!</Typography>
+      <Typography sx={{ textAlign: "center", fontWeight: 800, fontSize: "3rem" }}>Bank!</Typography>
       <Box sx={{ p: "2rem" }}>
         {/* Left */}
         <Grid container spacing={2}>
