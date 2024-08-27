@@ -1,15 +1,23 @@
 import React, { useState } from 'react';
 import { Card, CardContent, Grid, Typography, Box } from "@mui/material"
-import numbers from './numbers.json'
+import numbers from '../numbers.json'
 import { useMediaQuery, useTheme } from '@mui/material';
-import MobileLanding from './components/MobileLanding';
+import MobileLanding from '../components/MobileLanding';
 
-export default function Desktop() {
+interface DesktopProps {
+  handleSetMobile: (mobile: boolean) => void;
+};
+
+const Desktop: React.FC<DesktopProps> = ({ handleSetMobile }) => {
   const [roundTotal, setRoundTotal] = useState(0);
   const [rollNum, setRollNum] = useState(1);
   const [roundNum, setRoundNum] = useState(1);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+
+  const setIsMobile = (isMobile: boolean) => {
+    handleSetMobile(isMobile);
+  }
 
   const clickNumber = (value: number) => {
     var newBankTotal = roundTotal + value;
@@ -133,9 +141,11 @@ export default function Desktop() {
           </Box>
         </>
         :
-        <MobileLanding />
+        <MobileLanding handleSetMobile={setIsMobile} />
       }
     </>
 
   );
 };
+
+export default Desktop;

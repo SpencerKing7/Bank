@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Card, CardContent, Grid, Typography, Box } from "@mui/material"
 import numbers from './numbers.json'
 
-export default function Desktop() {
+export default function Mobile() {
   const [roundTotal, setRoundTotal] = useState(0);
   const [rollNum, setRollNum] = useState(1);
   const [roundNum, setRoundNum] = useState(1);
@@ -78,7 +78,7 @@ export default function Desktop() {
 
   return (
     <>
-      <Typography sx={{ textAlign: "center", fontWeight: 800, fontSize: "5rem" }}>Bank!</Typography>
+      <Typography sx={{ textAlign: "center", fontWeight: 800, fontSize: "5rem" }}>Bank! (Mobile)</Typography>
       <Box sx={{ p: "2rem" }}>
         {/* Left */}
         <Grid container spacing={2}>
