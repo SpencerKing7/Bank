@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Card, CardContent, Grid, Typography, Box } from "@mui/material"
 import numbers from './numbers.json'
 
-function App() {
+export default function Desktop() {
   const [roundTotal, setRoundTotal] = useState(0);
   const [rollNum, setRollNum] = useState(1);
   const [roundNum, setRoundNum] = useState(1);
@@ -127,6 +127,4 @@ function App() {
       </Box>
     </>
   );
-}
-
-export default App;
+};
