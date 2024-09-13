@@ -51,8 +51,12 @@ const Desktop: React.FC<DesktopProps> = ({ handleSetMobile }) => {
   };
 
   const clickDoubles = () => {
-    setRoundTotal(roundTotal * 2);
-    setRollNum(rollNum + 1);
+    if (rollNum <= 3) {
+      return
+    } else {
+      setRoundTotal(roundTotal * 2);
+      setRollNum(rollNum + 1);
+    }
   };
 
   const styles = {
@@ -70,6 +74,19 @@ const Desktop: React.FC<DesktopProps> = ({ handleSetMobile }) => {
       textAlign: 'center',
       cursor: "pointer"
     },
+    cardContentDouble: {
+      fontSize: '1rem',
+      fontWeight: 500,
+      textAlign: 'center',
+      cursor: "pointer"
+    },
+    cardContentDoubleDisable: {
+      fontSize: '1rem',
+      fontWeight: 500,
+      textAlign: 'center',
+      backgroundColor: 'lightgray',
+      cursor: 'not-allowed'
+    },
     cardDanger: {
       height: '100%',
       display: 'flex',
@@ -85,6 +102,14 @@ const Desktop: React.FC<DesktopProps> = ({ handleSetMobile }) => {
       justifyContent: 'center',
       backgroundColor: 'green',
       cursor: 'pointer'
+    },
+    cardGray: {
+      height: '100%',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: 'lightgray',
+      cursor: 'pointer'
     }
   };
 
@@ -96,7 +121,7 @@ const Desktop: React.FC<DesktopProps> = ({ handleSetMobile }) => {
           <Box sx={{ p: "2rem" }}>
             {/* Left */}
             <Grid container spacing={2}>
-              <Grid item xs={6}>
+              <Grid item md={3}>
                 <Grid container spacing={3}>
                   {numbers.dice.map((diceSide) => (
                     <Grid item xs={4} key={diceSide.value}>
@@ -108,8 +133,8 @@ const Desktop: React.FC<DesktopProps> = ({ handleSetMobile }) => {
                     </Grid>
                   ))}
                   <Grid item xs={4}>
-                    <Card sx={rollNum > 3 ? styles.cardGreen : styles.card} onClick={clickDoubles}>
-                      <CardContent sx={styles.cardContent}>doubles</CardContent>
+                    <Card sx={rollNum > 3 ? styles.cardGreen : styles.cardGray} onClick={clickDoubles}>
+                      <CardContent sx={rollNum <= 3 ? styles.cardContentDoubleDisable : styles.cardContentDouble}>doubles</CardContent>
                     </Card>
                   </Grid>
                   <Grid item xs={12}>
@@ -121,8 +146,8 @@ const Desktop: React.FC<DesktopProps> = ({ handleSetMobile }) => {
               </Grid>
 
               {/* Right */}
-              <Grid item xs={6}>
-                <Typography sx={{ textAlign: "right" }}>Round: {roundNum}/20</Typography>
+              <Grid item md={9}>
+                <Typography sx={{ textAlign: "right", fontSize: "2rem" }}>Round: {roundNum}/20</Typography>
                 <Typography
                   sx={{
                     display: "flex",
