@@ -121,7 +121,7 @@ const Desktop: React.FC<DesktopProps> = ({ handleSetMobile }) => {
           <Box sx={{ p: "2rem" }}>
             {/* Left */}
             <Grid container spacing={2}>
-              <Grid item md={3}>
+              <Grid item md={4}>
                 <Grid container spacing={3}>
                   {numbers.dice.map((diceSide) => (
                     <Grid item xs={4} key={diceSide.value}>
@@ -146,7 +146,7 @@ const Desktop: React.FC<DesktopProps> = ({ handleSetMobile }) => {
               </Grid>
 
               {/* Right */}
-              <Grid item md={9}>
+              <Grid item md={8}>
                 <Typography sx={{ textAlign: "right", fontSize: "2rem" }}>Round: {roundNum}/20</Typography>
                 <Typography
                   sx={{
