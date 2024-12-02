@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import Desktop from './pages/Desktop'
-import Mobile from './Mobile'
+import Mobile from './pages/Mobile'
 // import { Routes, Route, BrowserRouter } from 'react-router-dom'
 // import { CssBaseline } from '@mui/material'
 

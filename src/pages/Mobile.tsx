@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Card, CardContent, Grid, Typography, Box } from "@mui/material"
-import numbers from './numbers.json'
+import numbers from '../numbers.json'
 
 export default function Mobile() {
   const [roundTotal, setRoundTotal] = useState(0);

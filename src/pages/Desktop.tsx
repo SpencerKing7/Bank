@@ -3,6 +3,7 @@ import { Card, CardContent, Grid, Typography, Box } from "@mui/material"
 import numbers from '../numbers.json'
 import { useMediaQuery, useTheme } from '@mui/material';
 import MobileLanding from '../components/MobileLanding';
+import { Player } from '../ts/constants';
 
 interface DesktopProps {
   handleSetMobile: (mobile: boolean) => void;
@@ -14,6 +15,7 @@ const Desktop: React.FC<DesktopProps> = ({ handleSetMobile }) => {
   const [roundNum, setRoundNum] = useState(1);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const [arrPlayers, setArrPlayers] = useState<Player[]>();
 
   const setIsMobile = (isMobile: boolean) => {
     handleSetMobile(isMobile);
@@ -125,7 +127,7 @@ const Desktop: React.FC<DesktopProps> = ({ handleSetMobile }) => {
                 <Grid container spacing={3}>
                   {numbers.dice.map((diceSide) => (
                     <Grid item xs={4} key={diceSide.value}>
-                      <Card sx={(rollNum > 3 && diceSide.value === 7) ? styles.cardDanger : styles.card} onClick={() => clickNumber(diceSide.value)}>
+                      <Card sx={(rollNum > 3 && diceSide.value === 7) ? styles.cardDanger : (rollNum <= 3 && diceSide.value === 7 ? styles.cardGreen : styles.card)} onClick={() => clickNumber(diceSide.value)}>
                         <CardContent sx={styles.cardContent}>
                           {diceSide.value}
                         </CardContent>
