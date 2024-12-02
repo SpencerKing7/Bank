@@ -6,15 +6,17 @@ export interface PlayerCardProps {
   player: Player;
 };
 
-export default function PlayerCard() {
+const PlayerCard: React.FC<PlayerCardProps> = ({ player }) => {
   return (
     <>
       <Card>
         <CardContent>
-          <Typography>First Last</Typography>
-          <Typography>123</Typography>
+          <Typography>{player.name}</Typography>
+          <Typography>{player.points}</Typography>
         </CardContent>
       </Card>
     </>
   )
-}
+};
+
+export default PlayerCard;

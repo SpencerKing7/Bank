@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Card, CardContent, Grid, Typography, Box } from "@mui/material"
 import numbers from '../numbers.json'
 import { useMediaQuery, useTheme } from '@mui/material';
 import MobileLanding from '../components/MobileLanding';
 import { Player } from '../ts/constants';
+import PlayerCard from '../components/PlayerCard';
 
 interface DesktopProps {
   handleSetMobile: (mobile: boolean) => void;
@@ -15,7 +16,18 @@ const Desktop: React.FC<DesktopProps> = ({ handleSetMobile }) => {
   const [roundNum, setRoundNum] = useState(1);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+
   const [arrPlayers, setArrPlayers] = useState<Player[]>();
+
+  useEffect(() => {
+    const testPlayer: Player[] = [{
+      id: 1,
+      name: "Kazuki",
+      points: 250
+    }]
+
+    setArrPlayers(testPlayer)
+  }, [])
 
   const setIsMobile = (isMobile: boolean) => {
     handleSetMobile(isMobile);
@@ -163,6 +175,11 @@ const Desktop: React.FC<DesktopProps> = ({ handleSetMobile }) => {
                 >
                   {roundTotal}
                 </Typography>
+                {/* ?
+                <PlayerCard player={arrPlayers[0]} />
+                :
+                <></>
+                } */}
               </Grid>
             </Grid>
           </Box>
