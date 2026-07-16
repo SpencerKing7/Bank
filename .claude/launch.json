@@ -3,8 +3,8 @@
   "configurations": [
     {
       "name": "bank-dev",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["start"],
+      "runtimeExecutable": "env",
+      "runtimeArgs": ["BROWSER=none", "npm", "start"],
       "port": 3000
     }
   ]
