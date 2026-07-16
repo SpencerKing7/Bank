@@ -90,7 +90,9 @@ export default function GameRoute() {
   const { code: rawCode } = useParams();
   const code = rawCode?.toUpperCase();
   const { uid, ready, error: authError } = useAnonymousAuth();
-  const { game, players, loading, notFound } = useGame(ready && uid && code ? code : undefined);
+  const { game, players, loading, notFound, ended } = useGame(
+    ready && uid && code ? code : undefined
+  );
 
   const me = players.find((p) => p.id === uid);
 
@@ -107,6 +109,24 @@ export default function GameRoute() {
     return (
       <Centered>
         <Alert severity="error">Could not connect: {authError}</Alert>
+      </Centered>
+    );
+  }
+
+  // The doc was deleted out from under us — the host ended the game.
+  if (ended) {
+    if (getActiveGameCode() === code) clearActiveGameCode();
+    return (
+      <Centered>
+        <Typography variant="h4" gutterBottom>
+          Game ended
+        </Typography>
+        <Typography color="text.secondary" sx={{ mb: 3 }}>
+          The host ended this game.
+        </Typography>
+        <Button variant="contained" onClick={() => navigate('/')}>
+          Back to Home
+        </Button>
       </Centered>
     );
   }

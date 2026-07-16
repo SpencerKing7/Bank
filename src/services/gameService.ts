@@ -1,12 +1,14 @@
 import {
   collection,
   doc,
+  getDocs,
   onSnapshot,
   orderBy,
   query,
   runTransaction,
   serverTimestamp,
   Unsubscribe,
+  writeBatch,
 } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import { generateGameCode } from '../game/codes';
@@ -174,6 +176,19 @@ export async function bank(code: string, expectedRoundNum: number): Promise<void
       bankedRound: game.roundNum,
     });
   });
+}
+
+// Host-only (enforced by rules): deletes the game and every player doc in one
+// atomic batch. Everyone's game listener sees the doc vanish and resets to the
+// "host ended the game" screen. Player docs must go too — game codes get
+// reused, and orphaned players would leak into a future game with this code.
+export async function endGame(code: string): Promise<void> {
+  requireUid();
+  const playersSnap = await getDocs(collection(db, 'games', code, 'players'));
+  const batch = writeBatch(db);
+  playersSnap.forEach((snap) => batch.delete(snap.ref));
+  batch.delete(gameRef(code));
+  await batch.commit();
 }
 
 export function subscribeToGame(

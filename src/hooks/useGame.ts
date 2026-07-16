@@ -7,6 +7,9 @@ export interface GameState {
   players: PlayerDoc[];
   loading: boolean; // true until BOTH the game doc and players have arrived
   notFound: boolean;
+  // The game existed during this subscription and was then deleted — i.e. the
+  // host ended it. Distinguishes "host ended the game" from a bad code.
+  ended: boolean;
 }
 
 // Live game state via two Firestore listeners. Pass undefined to stay idle
@@ -17,6 +20,7 @@ export function useGame(code: string | undefined): GameState {
   const [gameLoaded, setGameLoaded] = useState(false);
   const [playersLoaded, setPlayersLoaded] = useState(false);
   const [notFound, setNotFound] = useState(false);
+  const [ended, setEnded] = useState(false);
 
   useEffect(() => {
     if (!code) return;
@@ -25,10 +29,17 @@ export function useGame(code: string | undefined): GameState {
     setGameLoaded(false);
     setPlayersLoaded(false);
     setNotFound(false);
+    setEnded(false);
 
+    let seen = false;
     const unsubGame = subscribeToGame(
       code,
       (nextGame) => {
+        if (nextGame) {
+          seen = true;
+        } else if (seen) {
+          setEnded(true);
+        }
         setGame(nextGame);
         setNotFound(nextGame === null);
         setGameLoaded(true);
@@ -56,5 +67,5 @@ export function useGame(code: string | undefined): GameState {
   // Waiting for players too prevents a one-tick flash of the join form for
   // players who already have a doc in this game.
   const loading = !code || !gameLoaded || (!notFound && !playersLoaded);
-  return { game, players, loading, notFound };
+  return { game, players, loading, notFound, ended };
 }

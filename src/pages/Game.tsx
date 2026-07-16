@@ -11,6 +11,7 @@ import {
   Typography,
 } from '@mui/material';
 import BankButton, { BankState } from '../components/BankButton';
+import EndGameButton from '../components/EndGameButton';
 import NumberGrid from '../components/NumberGrid';
 import RoundHeader from '../components/RoundHeader';
 import RoundTotal from '../components/RoundTotal';
@@ -136,6 +137,7 @@ export default function Game({ code, game, players, uid }: GameProps) {
           >
             Undo last roll
           </Button>
+          <EndGameButton code={code} />
         </>
       ) : (
         <Typography

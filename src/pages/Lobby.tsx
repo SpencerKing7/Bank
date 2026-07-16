@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Alert, Box, Button, Chip, Container, Typography } from '@mui/material';
+import EndGameButton from '../components/EndGameButton';
 import { GameDoc, PlayerDoc } from '../game/types';
 import { startGame } from '../services/gameService';
 
@@ -66,9 +67,12 @@ export default function Lobby({ code, game, players, uid }: LobbyProps) {
       {error && <Alert severity="error">{error}</Alert>}
 
       {isHost ? (
-        <Button variant="contained" fullWidth disabled={busy} onClick={handleStart} sx={{ mb: 2 }}>
-          {busy ? 'Starting…' : 'Start Game'}
-        </Button>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mb: 2 }}>
+          <Button variant="contained" fullWidth disabled={busy} onClick={handleStart}>
+            {busy ? 'Starting…' : 'Start Game'}
+          </Button>
+          <EndGameButton code={code} label="Cancel game" />
+        </Box>
       ) : (
         <Typography color="text.secondary" sx={{ textAlign: 'center', mb: 2 }}>
           Waiting for {host?.name ?? 'the host'} to start…

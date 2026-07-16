@@ -16,7 +16,9 @@ service cloud.firestore {
       allow update: if request.auth != null
                     && resource.data.hostId == request.auth.uid
                     && request.resource.data.hostId == resource.data.hostId;
-      allow delete: if false;
+      // Host may end the game; deleting the doc resets every player's screen.
+      allow delete: if request.auth != null
+                    && resource.data.hostId == request.auth.uid;
 
       match /players/{playerId} {
         allow read: if request.auth != null;
@@ -25,7 +27,12 @@ service cloud.firestore {
         allow update: if request.auth.uid == playerId
                       && request.resource.data.diff(resource.data)
                            .affectedKeys().hasOnly(['points', 'bankedRound']);
-        allow delete: if false;
+        // Host cleanup when ending a game. Inside that delete batch, get()
+        // reads pre-batch state, so this passes even though the game doc is
+        // deleted in the same batch.
+        allow delete: if request.auth != null
+                      && get(/databases/$(db)/documents/games/$(code)).data.hostId
+                           == request.auth.uid;
       }
     }
   }

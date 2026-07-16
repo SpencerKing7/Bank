@@ -6,6 +6,12 @@
       "runtimeExecutable": "env",
       "runtimeArgs": ["BROWSER=none", "npm", "start"],
       "port": 3000
+    },
+    {
+      "name": "bank-dev-emulator",
+      "runtimeExecutable": "env",
+      "runtimeArgs": ["BROWSER=none", "PORT=3001", "REACT_APP_USE_EMULATOR=true", "npm", "start"],
+      "port": 3001
     }
   ]
 }
