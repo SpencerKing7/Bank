@@ -1,46 +1,58 @@
-# Getting Started with Create React App
+# Bank!
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+A real-time multiplayer scorekeeper for the dice game **Bank**. The host creates a game and gets a 4-letter code; everyone else joins from their phone, watches the round total climb live, and races to **BANK** before a bad 7 wipes the pot.
 
-## Available Scripts
+## Rules
 
-In the project directory, you can run:
+- Rounds 1–3 of rolling are safe: a **7 scores +70**.
+- From roll 4 on, a **7 busts the round** — the un-banked total is gone and the next round starts.
+- **Doubles** (×2) can be played from roll 4 on.
+- Any player can **Bank** from roll 4 on (once per round) to add the current total to their score.
+- The round ends on a bust or when **every player has banked**. Highest score after the final round wins.
 
-### `npm start`
+## One-time Firebase setup
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+The app needs a (free) Firebase project:
 
-The page will reload if you make edits.\
-You will also see any lint errors in the console.
+1. Go to [console.firebase.google.com](https://console.firebase.google.com) → **Add project** (e.g. `bank-game`); Analytics can be off.
+2. Project settings → **Your apps** → **Add app** → Web (`</>`). Skip hosting. Copy the config values shown.
+3. `cp .env.local.example .env.local` and fill in the four values from step 2.
+4. Build → **Firestore Database** → Create database → **Production mode**, location `nam5` (or nearest).
+5. Build → **Authentication** → Get started → Sign-in method → enable **Anonymous**.
+6. Firestore Database → **Rules** → paste the contents of [firestore.rules](firestore.rules) → **Publish**.
+7. Before deploying: Authentication → Settings → **Authorized domains** → add `spencerking7.github.io`.
 
-### `npm test`
+The web config values are public by design — the Firestore rules are what protect the data. `.env.local` is gitignored simply to keep them out of the repo.
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+## Develop
 
-### `npm run build`
+```bash
+npm install
+npm start        # http://localhost:3000
+npm test         # game-logic unit tests
+```
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+To test multiplayer locally, open one normal window and one **incognito** window (two normal tabs share the same anonymous identity and would be the same player).
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+### Without a Firebase project (emulator)
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+```bash
+npx firebase-tools@13 emulators:start --project demo-bank
+```
 
-### `npm run eject`
+and put `REACT_APP_USE_EMULATOR=true` in `.env.local` (instead of the real config). Requires Java.
 
-**Note: this is a one-way operation. Once you `eject`, you can’t go back!**
+## Deploy
 
-If you aren’t satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+```bash
+npm run deploy   # builds and pushes to the gh-pages branch
+```
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you’re on your own.
+Live at https://spencerking7.github.io/Bank (config from your local `.env.local` is baked in at build time).
 
-You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
+## How it works
 
-## Learn More
-
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
-
-To learn React, check out the [React documentation](https://reactjs.org/).
+- **Firestore data**: one `games/{code}` doc (round state, written only by the host's client through transactions) plus a `games/{code}/players/{uid}` subcollection (each player writes only their own doc when banking).
+- **Bank vs. bust race**: banking is a Firestore transaction that re-checks the round; if the host's 7 lands first, the bank cleanly fails with a "too late" message — never a double-count.
+- **Identity**: Firebase Anonymous Auth; your uid is your player id, so a refresh rejoins automatically. The active game code is kept in localStorage for the Rejoin button.
+- **Game logic** lives in pure, unit-tested functions in [src/game/logic.ts](src/game/logic.ts); Firestore I/O is isolated in [src/services/gameService.ts](src/services/gameService.ts).
