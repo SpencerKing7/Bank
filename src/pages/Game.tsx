@@ -23,6 +23,7 @@ import {
   undoLast,
 } from '../game/logic';
 import { GameDoc, PlayerDoc } from '../game/types';
+import { Connection } from '../hooks/useGame';
 import {
   advanceRoundTx,
   AlreadyBankedError,
@@ -38,6 +39,7 @@ interface GameProps {
   game: GameDoc;
   players: PlayerDoc[];
   uid: string;
+  connection: Connection;
 }
 
 function lastActionText(game: GameDoc): string {
@@ -59,7 +61,14 @@ function lastActionText(game: GameDoc): string {
   }
 }
 
-export default function Game({ code, game, players, uid }: GameProps) {
+// Fill the viewport exactly, never scroll. dvh tracks mobile browser chrome as
+// it collapses; vh is the fallback for browsers without it.
+const fullHeight = {
+  height: '100vh',
+  '@supports (height: 100dvh)': { height: '100dvh' },
+} as const;
+
+export default function Game({ code, game, players, uid, connection }: GameProps) {
   const isHost = uid === game.hostId;
   const me = players.find((p) => p.id === uid);
   const [standingsOpen, setStandingsOpen] = useState(false);
@@ -68,8 +77,13 @@ export default function Game({ code, game, players, uid }: GameProps) {
 
   // Host detects "everyone banked" and advances the round. The transaction is
   // preconditioned on roundNum, so duplicate fires are harmless.
+  //
+  // Gated on a live connection: `players` can be a stale cache replay while
+  // offline, and the transaction can only re-check roundNum — it cannot re-run
+  // allPlayersBanked server-side (client transactions read docs, not queries).
+  // Acting on stale data would end the round on someone who never banked.
   useEffect(() => {
-    if (!isHost || advancing.current) return;
+    if (!isHost || advancing.current || connection !== 'live') return;
     if (allPlayersBanked(game, players)) {
       advancing.current = true;
       advanceRoundTx(code, game.roundNum)
@@ -78,7 +92,7 @@ export default function Game({ code, game, players, uid }: GameProps) {
           advancing.current = false;
         });
     }
-  }, [isHost, game, players, code]);
+  }, [isHost, game, players, code, connection]);
 
   if (!me) return null;
 
@@ -114,46 +128,79 @@ export default function Game({ code, game, players, uid }: GameProps) {
   return (
     <Container
       maxWidth="sm"
-      sx={{ px: 2, py: 2, minHeight: '100vh', display: 'flex', flexDirection: 'column', gap: 2 }}
+      sx={{
+        ...fullHeight,
+        px: 2,
+        pt: 1.5,
+        pb: 'calc(12px + env(safe-area-inset-bottom))',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 1,
+        overflow: 'hidden',
+      }}
     >
       <RoundHeader
         game={game}
         bankedCount={bankedCount}
         playerCount={players.length}
+        connection={connection}
         onOpenStandings={() => setStandingsOpen(true)}
       />
 
-      <RoundTotal game={game} />
-
       {isHost ? (
         <>
+          {/* Hero stays compact so the roll pad, which is what the host
+              actually touches, gets the leftover height. */}
+          <RoundTotal game={game} compact />
           <NumberGrid rollNum={game.rollNum} onRoll={handleRoll} onDoubles={handleDoubles} />
           <Button
             variant="text"
+            size="small"
             startIcon={<UndoIcon />}
             disabled={!canUndo}
             onClick={handleUndo}
-            sx={{ color: 'text.secondary', alignSelf: 'center' }}
+            sx={{
+              color: 'text.secondary',
+              alignSelf: 'center',
+              flex: '0 0 auto',
+              minHeight: 36,
+              fontSize: '0.9375rem',
+            }}
           >
             Undo last roll
           </Button>
-          <EndGameButton code={code} />
         </>
       ) : (
-        <Typography
-          variant="h6"
-          color="text.secondary"
-          sx={{ textAlign: 'center', minHeight: 56, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        // The total and the caption describing it are one unit, centred
+        // together in the slack rather than drifting to opposite ends.
+        <Box
+          sx={{
+            flex: '1 1 auto',
+            minHeight: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
         >
-          {lastActionText(game)}
-        </Typography>
+          <RoundTotal game={game} />
+          <Typography
+            variant="h6"
+            color="text.secondary"
+            sx={{ textAlign: 'center', minHeight: 32 }}
+          >
+            {lastActionText(game)}
+          </Typography>
+        </Box>
       )}
 
-      <Box sx={{ flexGrow: 1 }} />
-
-      <Box sx={{ pb: 'env(safe-area-inset-bottom)', mb: 1 }}>
+      <Box sx={{ flex: '0 0 auto' }}>
         <BankButton state={bankState} onBank={handleBank} />
-        <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', mt: 1 }}>
+        <Typography
+          variant="body2"
+          color="text.secondary"
+          sx={{ textAlign: 'center', mt: 0.5 }}
+        >
           Your score: <strong>{me.points}</strong>
         </Typography>
       </Box>
@@ -171,6 +218,13 @@ export default function Game({ code, game, players, uid }: GameProps) {
             Standings
           </Typography>
           <StandingsList players={players} uid={uid} game={game} />
+          {/* Destructive and rare — tucked in here rather than sitting next to
+              BANK, where it cost a row of height and invited mis-taps. */}
+          {isHost && (
+            <Box sx={{ mt: 2, pt: 2, borderTop: '1px solid', borderColor: 'divider', display: 'flex' }}>
+              <EndGameButton code={code} />
+            </Box>
+          )}
         </Box>
       </SwipeableDrawer>
 

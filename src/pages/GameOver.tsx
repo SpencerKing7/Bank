@@ -75,34 +75,49 @@ export default function GameOver({ game, players, uid }: GameOverProps) {
   return (
     <Container
       maxWidth="sm"
-      sx={{ px: 2, py: 4, minHeight: '100vh', display: 'flex', flexDirection: 'column', gap: 2 }}
+      sx={{
+        height: '100vh',
+        '@supports (height: 100dvh)': { height: '100dvh' },
+        px: 2,
+        pt: 2,
+        pb: 'calc(16px + env(safe-area-inset-bottom))',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 1.5,
+        overflow: 'hidden',
+      }}
     >
       <Confetti />
-      <Box sx={{ textAlign: 'center', mt: 4 }}>
+      <Box sx={{ textAlign: 'center', flex: '0 0 auto' }}>
         <Typography variant="overline" color="text.secondary">
           {winners.length > 1 ? 'It’s a tie' : 'Winner'}
         </Typography>
         <Typography
           variant="h3"
-          sx={{ color: 'secondary.light', animation: 'winnerGlow 2s ease-in-out infinite' }}
+          sx={{
+            color: 'secondary.light',
+            animation: 'winnerGlow 2s ease-in-out infinite',
+            fontSize: 'clamp(2rem, min(14vw, 9dvh), 4.5rem)',
+          }}
         >
           {winnerNames || 'Nobody?'}
         </Typography>
-        <Typography variant="h1" sx={{ fontSize: 'clamp(3.5rem, 18vw, 6rem)' }}>
+        <Typography variant="h1" sx={{ fontSize: 'clamp(2.75rem, min(18vw, 13dvh), 6rem)' }}>
           {topScore}
         </Typography>
       </Box>
 
-      <Box>
-        <Typography variant="h6" gutterBottom>
+      {/* Scrolls internally on a big roster so Play Again stays put. */}
+      <Box sx={{ flex: '1 1 auto', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+        <Typography variant="h6" gutterBottom sx={{ flex: '0 0 auto' }}>
           Final standings · {game.totalRounds} rounds
         </Typography>
-        <StandingsList players={players} uid={uid} medals />
+        <Box sx={{ overflowY: 'auto', minHeight: 0 }}>
+          <StandingsList players={players} uid={uid} medals />
+        </Box>
       </Box>
 
-      <Box sx={{ flexGrow: 1 }} />
-
-      <Button variant="contained" fullWidth onClick={() => navigate('/')} sx={{ mb: 2 }}>
+      <Button variant="contained" fullWidth onClick={() => navigate('/')} sx={{ flex: '0 0 auto' }}>
         Play Again
       </Button>
     </Container>

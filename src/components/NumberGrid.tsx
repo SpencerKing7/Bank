@@ -9,20 +9,29 @@ interface NumberGridProps {
   onDoubles: () => void;
 }
 
+// No fixed height: the grid is the flexible element on the host's screen, so
+// tiles take whatever vertical space is left over and shrink on short phones
+// rather than pushing the BANK button off the bottom.
 const tileBase = {
-  height: 76,
+  height: '100%',
+  minHeight: 0,
   borderRadius: '14px',
   display: 'flex',
   flexDirection: 'column',
   alignItems: 'center',
   justifyContent: 'center',
   fontFamily: DISPLAY_FONT,
-  fontSize: '2rem',
+  fontSize: 'clamp(1.5rem, 4.2dvh, 2rem)',
   lineHeight: 1,
   transition: 'transform 120ms, background-color 120ms',
 } as const;
 
-const sublabelSx = { fontSize: '0.75rem', fontWeight: 700, fontFamily: 'inherit', lineHeight: 1.4 };
+const sublabelSx = {
+  fontSize: 'clamp(0.625rem, 1.5dvh, 0.75rem)',
+  fontWeight: 700,
+  fontFamily: 'inherit',
+  lineHeight: 1.4,
+};
 
 // The host's roll pad: 2-12 plus Doubles, 3-wide. The 7 tile flips from
 // "safe" (+70 during rolls 1-3) to "danger" (busts from roll 4) — color and
@@ -32,7 +41,16 @@ export default function NumberGrid({ rollNum, onRoll, onDoubles }: NumberGridPro
   const doublesLocked = rollNum <= 3;
 
   return (
-    <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1.5 }}>
+    <Box
+      sx={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(3, 1fr)',
+        gridTemplateRows: 'repeat(4, minmax(0, 1fr))',
+        gap: 1.5,
+        flex: '1 1 auto',
+        minHeight: 0,
+      }}
+    >
       {numbers.dice.map(({ value }) => {
         const isSeven = value === 7;
         const seven = sevenIsSafe ? tiles.sevenSafe : tiles.sevenDanger;

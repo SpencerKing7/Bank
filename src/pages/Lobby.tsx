@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Alert, Box, Button, Chip, Container, Typography } from '@mui/material';
 import EndGameButton from '../components/EndGameButton';
 import { GameDoc, PlayerDoc } from '../game/types';
+import { Connection } from '../hooks/useGame';
 import { startGame } from '../services/gameService';
 
 interface LobbyProps {
@@ -9,9 +10,15 @@ interface LobbyProps {
   game: GameDoc;
   players: PlayerDoc[];
   uid: string;
+  connection?: Connection;
 }
 
-export default function Lobby({ code, game, players, uid }: LobbyProps) {
+const fullHeight = {
+  height: '100vh',
+  '@supports (height: 100dvh)': { height: '100dvh' },
+} as const;
+
+export default function Lobby({ code, game, players, uid, connection = 'live' }: LobbyProps) {
   const isHost = uid === game.hostId;
   const host = players.find((p) => p.id === game.hostId);
   const [busy, setBusy] = useState(false);
@@ -31,25 +38,44 @@ export default function Lobby({ code, game, players, uid }: LobbyProps) {
   return (
     <Container
       maxWidth="sm"
-      sx={{ px: 2, py: 4, minHeight: '100vh', display: 'flex', flexDirection: 'column', gap: 2 }}
+      sx={{
+        ...fullHeight,
+        px: 2,
+        pt: 2,
+        pb: 'calc(16px + env(safe-area-inset-bottom))',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 1.5,
+        overflow: 'hidden',
+      }}
     >
-      <Box sx={{ textAlign: 'center', mt: 4 }}>
+      <Box sx={{ textAlign: 'center', flex: '0 0 auto' }}>
         <Typography variant="overline" color="text.secondary">
           Game code
         </Typography>
-        <Typography variant="h2" sx={{ color: 'secondary.light' }}>
+        <Typography
+          variant="h2"
+          sx={{ color: 'secondary.light', fontSize: 'clamp(3rem, min(22vw, 14dvh), 8rem)' }}
+        >
           {code}
         </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
           Tell your friends to join with this code · {game.totalRounds} rounds
         </Typography>
       </Box>
 
-      <Box sx={{ mt: 2 }}>
-        <Typography variant="h6" gutterBottom>
-          Players ({players.length})
-        </Typography>
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+      {/* The one growable region: a big party scrolls this list, not the page,
+          so Start Game never leaves the screen. */}
+      <Box sx={{ flex: '1 1 auto', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1, flex: '0 0 auto' }}>
+          <Typography variant="h6">Players ({players.length})</Typography>
+          {connection === 'reconnecting' && (
+            <Typography variant="body2" sx={{ color: 'warning.main', fontWeight: 700 }}>
+              · Reconnecting…
+            </Typography>
+          )}
+        </Box>
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, overflowY: 'auto', minHeight: 0 }}>
           {players.map((player) => (
             <Chip
               key={player.id}
@@ -62,19 +88,17 @@ export default function Lobby({ code, game, players, uid }: LobbyProps) {
         </Box>
       </Box>
 
-      <Box sx={{ flexGrow: 1 }} />
-
       {error && <Alert severity="error">{error}</Alert>}
 
       {isHost ? (
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mb: 2 }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, flex: '0 0 auto' }}>
           <Button variant="contained" fullWidth disabled={busy} onClick={handleStart}>
             {busy ? 'Starting…' : 'Start Game'}
           </Button>
           <EndGameButton code={code} label="Cancel game" />
         </Box>
       ) : (
-        <Typography color="text.secondary" sx={{ textAlign: 'center', mb: 2 }}>
+        <Typography color="text.secondary" sx={{ textAlign: 'center', flex: '0 0 auto' }}>
           Waiting for {host?.name ?? 'the host'} to start…
         </Typography>
       )}

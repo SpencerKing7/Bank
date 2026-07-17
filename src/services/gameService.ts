@@ -191,27 +191,37 @@ export async function endGame(code: string): Promise<void> {
   await batch.commit();
 }
 
+// `fromCache` is what tells live data apart from a stale local replay: while
+// the network is down Firestore keeps serving the last known snapshot, which
+// otherwise looks identical to a fresh one. Callers use it to show a
+// reconnecting state and to refuse to act on data that may be out of date.
 export function subscribeToGame(
   code: string,
-  onGame: (game: GameDoc | null) => void,
+  onGame: (game: GameDoc | null, fromCache: boolean) => void,
   onError: (error: Error) => void
 ): Unsubscribe {
   return onSnapshot(
     gameRef(code),
-    (snap) => onGame(snap.exists() ? (snap.data() as GameDoc) : null),
+    { includeMetadataChanges: true },
+    (snap) => onGame(snap.exists() ? (snap.data() as GameDoc) : null, snap.metadata.fromCache),
     onError
   );
 }
 
 export function subscribeToPlayers(
   code: string,
-  onPlayers: (players: PlayerDoc[]) => void,
+  onPlayers: (players: PlayerDoc[], fromCache: boolean) => void,
   onError: (error: Error) => void
 ): Unsubscribe {
   const playersQuery = query(collection(db, 'games', code, 'players'), orderBy('joinedAt'));
   return onSnapshot(
     playersQuery,
-    (snap) => onPlayers(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as PlayerDoc)),
+    { includeMetadataChanges: true },
+    (snap) =>
+      onPlayers(
+        snap.docs.map((d) => ({ id: d.id, ...d.data() }) as PlayerDoc),
+        snap.metadata.fromCache
+      ),
     onError
   );
 }

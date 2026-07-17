@@ -90,7 +90,7 @@ export default function GameRoute() {
   const { code: rawCode } = useParams();
   const code = rawCode?.toUpperCase();
   const { uid, ready, error: authError } = useAnonymousAuth();
-  const { game, players, loading, notFound, ended } = useGame(
+  const { game, players, loading, notFound, ended, connection } = useGame(
     ready && uid && code ? code : undefined
   );
 
@@ -154,6 +154,11 @@ export default function GameRoute() {
         <Box sx={{ display: 'flex', justifyContent: 'center' }}>
           <CircularProgress color="primary" />
         </Box>
+        {/* A listener that keeps failing retries forever behind the scenes.
+            Say so, rather than spinning silently or blaming the game code. */}
+        <Typography color="text.secondary" sx={{ mt: 3 }}>
+          {connection === 'live' ? 'Loading game…' : 'Connecting to the game…'}
+        </Typography>
       </Centered>
     );
   }
@@ -167,8 +172,8 @@ export default function GameRoute() {
   }
 
   if (game.status === 'lobby') {
-    return <Lobby code={code} game={game} players={players} uid={uid} />;
+    return <Lobby code={code} game={game} players={players} uid={uid} connection={connection} />;
   }
 
-  return <Game code={code} game={game} players={players} uid={uid} />;
+  return <Game code={code} game={game} players={players} uid={uid} connection={connection} />;
 }

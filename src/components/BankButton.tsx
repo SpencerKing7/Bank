@@ -24,7 +24,7 @@ export default function BankButton({ state, onBank }: BankButtonProps) {
       disabled={state !== 'active'}
       onClick={onBank}
       sx={{
-        height: 64,
+        height: 'clamp(52px, 7.5dvh, 64px)',
         fontFamily: DISPLAY_FONT,
         fontSize: state === 'locked' ? '1.25rem' : '1.75rem',
         letterSpacing: '0.06em',

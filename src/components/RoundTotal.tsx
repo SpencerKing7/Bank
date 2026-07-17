@@ -4,13 +4,16 @@ import { GameDoc } from '../game/types';
 
 interface RoundTotalProps {
   game: GameDoc;
+  // The host's screen also carries the roll pad, so the hero gets a smaller
+  // share of the height there than on a player's screen.
+  compact?: boolean;
 }
 
 const BUST_MS = 1400;
 
 // The hero number everyone stares at. Pops on each roll, shakes and shows
 // BUST in red for a beat when a bad 7 lands.
-export default function RoundTotal({ game }: RoundTotalProps) {
+export default function RoundTotal({ game, compact = false }: RoundTotalProps) {
   const [busting, setBusting] = useState(false);
   // One flash per bust: round advances on bust, so roundNum identifies it.
   const bustKey = game.lastAction?.type === 'bust' ? `bust:${game.roundNum}` : null;
@@ -29,7 +32,12 @@ export default function RoundTotal({ game }: RoundTotalProps) {
     <Box
       sx={{
         textAlign: 'center',
-        py: 2,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flex: '0 0 auto',
+        minHeight: 0,
+        py: compact ? 0.5 : 1,
         animation: busting ? 'bustShake 500ms ease, bustFlash 900ms ease-out' : undefined,
       }}
     >
@@ -40,6 +48,11 @@ export default function RoundTotal({ game }: RoundTotalProps) {
         sx={{
           color: busting ? 'error.light' : 'text.primary',
           animation: busting ? undefined : 'totalPop 180ms ease',
+          // Height-aware so a short screen shrinks the hero instead of
+          // shoving the BANK button below the fold.
+          fontSize: compact
+            ? 'clamp(2.75rem, 11dvh, 5.5rem)'
+            : 'clamp(4rem, min(28vw, 22dvh), 10rem)',
         }}
       >
         {busting ? 'BUST' : game.roundTotal}
