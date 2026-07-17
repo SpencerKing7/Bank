@@ -170,6 +170,28 @@ export default function Game({ code, game, players, uid, connection }: GameProps
             Undo last roll
           </Button>
         </>
+      ) : bankState === 'banked' ? (
+        // Banking locks you in at me.points, and from that moment the hero
+        // number is somebody else's — it keeps climbing without you, which is
+        // the opposite of what you want to read. Demote it to a bystander's
+        // view (the bust flash still lands, and watching it bust after you're
+        // safe is the best part) and spend the freed height on where that bank
+        // actually left you.
+        <Box sx={{ flex: '1 1 auto', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+          <RoundTotal game={game} compact />
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            sx={{ textAlign: 'center', minHeight: 24 }}
+          >
+            {lastActionText(game)}
+          </Typography>
+          {/* The list scrolls inside its own box: a big party must never push
+              the BANKED button off the bottom of the viewport. */}
+          <Box sx={{ flex: '1 1 auto', minHeight: 0, overflowY: 'auto', mt: 0.5 }}>
+            <StandingsList players={players} uid={uid} game={game} />
+          </Box>
+        </Box>
       ) : (
         // The total and the caption describing it are one unit, centred
         // together in the slack rather than drifting to opposite ends.
