@@ -1,6 +1,5 @@
 {
   "name": "bank",
-  "homepage": "https://spencerking7.github.io/Bank",
   "version": "0.1.0",
   "private": true,
   "dependencies": {
