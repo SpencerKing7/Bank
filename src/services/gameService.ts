@@ -8,6 +8,7 @@ import {
   runTransaction,
   serverTimestamp,
   Unsubscribe,
+  updateDoc,
   writeBatch,
 } from 'firebase/firestore';
 import { auth, db } from '../firebase';
@@ -115,49 +116,68 @@ export async function joinGame(code: string, name: string): Promise<void> {
   });
 }
 
-export async function startGame(code: string): Promise<void> {
+export async function startGame(code: string, game: GameDoc): Promise<void> {
   const uid = requireUid();
-  await runTransaction(db, async (tx) => {
-    const snap = await tx.get(gameRef(code));
-    if (!snap.exists()) throw new GameNotFoundError();
-    const game = snap.data() as GameDoc;
-    if (game.hostId !== uid || game.status !== 'lobby') return;
-    tx.update(gameRef(code), { status: 'active', lastAction: { type: 'roundStart' } });
-  });
+  if (game.hostId !== uid || game.status !== 'lobby') return;
+  await updateDoc(gameRef(code), { status: 'active', lastAction: { type: 'roundStart' } });
 }
 
-async function hostGameTransaction(code: string, mutate: (game: GameDoc) => GameDoc | null) {
-  await runTransaction(db, async (tx) => {
-    const snap = await tx.get(gameRef(code));
-    if (!snap.exists()) throw new GameNotFoundError();
-    const game = snap.data() as GameDoc;
-    const next = mutate(game);
-    if (next === null || next === game) return;
-    tx.update(gameRef(code), gameUpdateFields(next));
-  });
+// Every host action below is a plain write against the caller's in-memory game,
+// not a read-modify-write transaction. Two reasons that is both safe and much
+// faster:
+//
+// Safe — the game doc has exactly one writer, the host's client (the rules
+// enforce it), and Firestore applies one client's writes in the order they were
+// issued. So the host's listener copy, which already includes its own unacked
+// writes, IS the authoritative state. The old tx.get() fetched that same state
+// from the server to hand it to a client-side pure function: a full round-trip
+// that could not learn anything the host did not already know.
+//
+// Fast — plain writes are latency-compensated: the host's own snapshot fires
+// before the commit leaves the device, and players see the roll one server hop
+// later. runTransaction opts out of that entirely (its reads are remote lookups
+// and its commit skips the local mutation queue), so a tap used to cost a read
+// round-trip, then a commit, then a watch push, before even the host's own
+// screen moved.
+//
+// bank() stays a transaction — see the note there.
+async function hostWrite(
+  code: string,
+  game: GameDoc,
+  mutate: (game: GameDoc) => GameDoc | null
+): Promise<void> {
+  const next = mutate(game);
+  if (next === null || next === game) return;
+  await updateDoc(gameRef(code), gameUpdateFields(next));
 }
 
-export async function recordRoll(code: string, value: number): Promise<void> {
-  await hostGameTransaction(code, (game) => applyRoll(game, value));
+export function recordRoll(code: string, game: GameDoc, value: number): Promise<void> {
+  return hostWrite(code, game, (g) => applyRoll(g, value));
 }
 
-export async function recordDoubles(code: string): Promise<void> {
-  await hostGameTransaction(code, (game) => applyDoubles(game));
+export function recordDoubles(code: string, game: GameDoc): Promise<void> {
+  return hostWrite(code, game, applyDoubles);
 }
 
-export async function undoLastRoll(code: string): Promise<void> {
-  await hostGameTransaction(code, (game) => undoLast(game));
+export function undoLastRoll(code: string, game: GameDoc): Promise<void> {
+  return hostWrite(code, game, undoLast);
 }
 
-// Preconditioned on roundNum so a double-fired effect advances only once.
-export async function advanceRoundTx(code: string, expectedRoundNum: number): Promise<void> {
-  await hostGameTransaction(code, (game) =>
-    game.roundNum === expectedRoundNum ? advanceRound(game) : null
-  );
+// No roundNum precondition needed any more. The caller's effect can fire twice
+// for one round, but the second pass reads a `game` that already carries the
+// local echo of the first write — new roundNum, rollNum back to 1 — so
+// allPlayersBanked is false and it never calls through.
+export function advanceRoundNow(code: string, game: GameDoc): Promise<void> {
+  return hostWrite(code, game, advanceRound);
 }
 
-// Cross-doc transaction: serializable against the host's roll writes, so the
-// bank-vs-bust-7 race always resolves one way or the other, never both.
+// The one action that genuinely needs the server round-trip, so it keeps its
+// transaction: a player cannot trust its own copy of the game the way the host
+// can, because the host is writing it concurrently. Reading the game inside the
+// transaction makes its version a commit precondition, so the bank-vs-bust-7
+// race resolves one way or the other, never both. That still holds now the host
+// rolls with plain writes — those bump the game doc's update time just the
+// same, forcing a racing bank to retry, re-read the bust, and reject.
 export async function bank(code: string, expectedRoundNum: number): Promise<void> {
   const uid = requireUid();
   await runTransaction(db, async (tx) => {

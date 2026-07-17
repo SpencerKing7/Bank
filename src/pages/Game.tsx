@@ -25,7 +25,7 @@ import {
 import { GameDoc, PlayerDoc } from '../game/types';
 import { Connection } from '../hooks/useGame';
 import {
-  advanceRoundTx,
+  advanceRoundNow,
   AlreadyBankedError,
   bank,
   BankTooLateError,
@@ -75,18 +75,18 @@ export default function Game({ code, game, players, uid, connection }: GameProps
   const [toast, setToast] = useState<{ severity: AlertColor; text: string } | null>(null);
   const advancing = useRef(false);
 
-  // Host detects "everyone banked" and advances the round. The transaction is
-  // preconditioned on roundNum, so duplicate fires are harmless.
+  // Host detects "everyone banked" and advances the round. Duplicate fires are
+  // harmless: the write echoes back locally before this can run again, and the
+  // fresh roundNum makes allPlayersBanked false.
   //
   // Gated on a live connection: `players` can be a stale cache replay while
-  // offline, and the transaction can only re-check roundNum — it cannot re-run
-  // allPlayersBanked server-side (client transactions read docs, not queries).
-  // Acting on stale data would end the round on someone who never banked.
+  // offline, and nothing re-checks allPlayersBanked server-side. Acting on stale
+  // data would end the round on someone who never banked.
   useEffect(() => {
     if (!isHost || advancing.current || connection !== 'live') return;
     if (allPlayersBanked(game, players)) {
       advancing.current = true;
-      advanceRoundTx(code, game.roundNum)
+      advanceRoundNow(code, game)
         .catch(() => {})
         .finally(() => {
           advancing.current = false;
@@ -120,9 +120,9 @@ export default function Game({ code, game, players, uid, connection }: GameProps
     }
   };
 
-  const handleRoll = (value: number) => recordRoll(code, value).catch(() => {});
-  const handleDoubles = () => recordDoubles(code).catch(() => {});
-  const handleUndo = () => undoLastRoll(code).catch(() => {});
+  const handleRoll = (value: number) => recordRoll(code, game, value).catch(() => {});
+  const handleDoubles = () => recordDoubles(code, game).catch(() => {});
+  const handleUndo = () => undoLastRoll(code, game).catch(() => {});
   const canUndo = undoLast(game) !== null;
 
   return (

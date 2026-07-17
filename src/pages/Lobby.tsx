@@ -28,7 +28,7 @@ export default function Lobby({ code, game, players, uid, connection = 'live' }:
     setBusy(true);
     setError(null);
     try {
-      await startGame(code);
+      await startGame(code, game);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not start the game');
       setBusy(false);
