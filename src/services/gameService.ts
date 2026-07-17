@@ -1,12 +1,14 @@
 import {
   collection,
   doc,
+  getDoc,
   getDocs,
   onSnapshot,
   orderBy,
   query,
   runTransaction,
   serverTimestamp,
+  setDoc,
   Unsubscribe,
   updateDoc,
   writeBatch,
@@ -40,8 +42,6 @@ export class AlreadyBankedError extends Error {
   }
 }
 
-class CodeCollisionError extends Error {}
-
 function gameRef(code: string) {
   return doc(db, 'games', code);
 }
@@ -70,49 +70,81 @@ function gameUpdateFields(game: GameDoc) {
   };
 }
 
+// Game codes are four letters out of a 24-letter alphabet, so they collide with
+// a live game roughly once in 331,776 — but "roughly never" still needs an
+// answer, hence the read and the retry loop.
+//
+// A batch rather than a transaction. The two writes still land together, which
+// is what matters: a game doc with no host in the players list would render the
+// join form to its own host. What the batch adds is latency compensation. Home
+// awaits this and then navigates, which mounts GameRoute and two fresh
+// listeners; a batch's writes are already sitting in the local mutation queue,
+// so those listeners raise from cache and the lobby is simply there. A
+// transaction commits around the queue and leaves nothing behind, so the same
+// listeners had to go back to the server first — the lobby cost a whole extra
+// round trip after createGame had already resolved.
+//
+// The read is not a lock, and the rules are the backstop: two hosts generating
+// one code within the same round trip would both see it free, and the second
+// batch is then denied (the doc exists, and its hostId is not theirs), so that
+// host retries rather than flattening a live game. The read is what keeps the
+// far likelier self-collision — a code matching a game this host already owns,
+// which the update rule would happily allow — from ever reaching the write.
 export async function createGame(hostName: string, totalRounds: number): Promise<string> {
   const uid = requireUid();
   for (let attempt = 0; attempt < 5; attempt++) {
     const code = generateGameCode();
-    try {
-      await runTransaction(db, async (tx) => {
-        const snap = await tx.get(gameRef(code));
-        if (snap.exists()) throw new CodeCollisionError();
-        tx.set(gameRef(code), {
-          ...initialGameDoc(uid, totalRounds),
-          createdAt: serverTimestamp(),
-        });
-        tx.set(playerRef(code, uid), {
-          name: hostName,
-          points: 0,
-          bankedRound: 0,
-          joinedAt: serverTimestamp(),
-        });
-      });
-      return code;
-    } catch (e) {
-      if (e instanceof CodeCollisionError) continue;
-      throw e;
-    }
+    if ((await getDoc(gameRef(code))).exists()) continue;
+    const batch = writeBatch(db);
+    batch.set(gameRef(code), {
+      ...initialGameDoc(uid, totalRounds),
+      createdAt: serverTimestamp(),
+    });
+    batch.set(playerRef(code, uid), {
+      name: hostName,
+      points: 0,
+      bankedRound: 0,
+      joinedAt: serverTimestamp(),
+    });
+    await batch.commit();
+    return code;
   }
   throw new Error('Could not find a free game code — try again');
 }
 
 // Creates the caller's player doc. Rejoining (doc already exists) is a no-op
 // so points survive a refresh or a re-typed code.
+//
+// Both facts this needs are genuine server reads, but nothing orders them, so
+// they go out together and cost one round trip between them. The old
+// transaction awaited them one after the other and then paid a third trip to
+// commit — three sequential trips to learn two independent things.
+//
+// The game read is not optional: Firestore will happily create
+// games/{code}/players/{uid} beneath a game doc that does not exist, so without
+// it a mistyped code would silently "join" a game nobody else is in.
+//
+// The player read only decides whether to write at all; it is not a lock. If a
+// second tab somehow created the doc in the gap, the rules reject this write
+// rather than let it through — a rejoining setDoc carries a fresh joinedAt,
+// which the update rule's hasOnly(['points','bankedRound']) refuses. So the
+// read is the fast path and the rules are what actually protect the points.
 export async function joinGame(code: string, name: string): Promise<void> {
   const uid = requireUid();
-  await runTransaction(db, async (tx) => {
-    const gameSnap = await tx.get(gameRef(code));
-    if (!gameSnap.exists()) throw new GameNotFoundError();
-    const playerSnap = await tx.get(playerRef(code, uid));
-    if (playerSnap.exists()) return;
-    tx.set(playerRef(code, uid), {
-      name,
-      points: 0,
-      bankedRound: 0,
-      joinedAt: serverTimestamp(),
-    });
+  const [gameSnap, playerSnap] = await Promise.all([
+    getDoc(gameRef(code)),
+    getDoc(playerRef(code, uid)),
+  ]);
+  if (!gameSnap.exists()) throw new GameNotFoundError();
+  if (playerSnap.exists()) return;
+  // Plain write, so it is latency-compensated: the joiner's own players
+  // listener fires before the commit leaves the device and the lobby appears
+  // immediately, while everyone else sees them one server hop later.
+  await setDoc(playerRef(code, uid), {
+    name,
+    points: 0,
+    bankedRound: 0,
+    joinedAt: serverTimestamp(),
   });
 }
 
