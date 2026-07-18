@@ -68,16 +68,33 @@ const fullHeight = {
   '@supports (height: 100dvh)': { height: '100dvh' },
 } as const;
 
-export default function Game({ code, game, players, uid, connection }: GameProps) {
+export default function Game({ code, game, players: rawPlayers, uid, connection }: GameProps) {
   const isHost = uid === game.hostId;
-  const me = players.find((p) => p.id === uid);
   const [standingsOpen, setStandingsOpen] = useState(false);
   const [toast, setToast] = useState<{ severity: AlertColor; text: string } | null>(null);
   const advancing = useRef(false);
 
-  // Host detects "everyone banked" and advances the round. Duplicate fires are
-  // harmless: the write echoes back locally before this can run again, and the
-  // fresh roundNum makes allPlayersBanked false.
+  // bank() is a transaction, whose write never lands in the local cache, so the
+  // caller's own players listener won't reflect their bank until a server echo
+  // arrives (if at all). That leaves the host — who must both see their own bank
+  // land and detect all-banked to advance — stuck: the button wouldn't flip and
+  // the round wouldn't end when the host banks last. Optimistically mark our own
+  // bank for the current round; the server echo (matching bankedRound) supersedes
+  // it, and a new roundNum makes it stale on its own.
+  const [optimisticBankRound, setOptimisticBankRound] = useState<number | null>(null);
+  const players =
+    optimisticBankRound === game.roundNum
+      ? rawPlayers.map((p) =>
+          p.id === uid ? { ...p, bankedRound: optimisticBankRound } : p
+        )
+      : rawPlayers;
+  const me = players.find((p) => p.id === uid);
+
+  // Host detects "everyone banked" and advances the round. `players` carries the
+  // host's own optimistic bank, so this fires even when the host banks last (a
+  // transaction write never reaches the host's own listener from cache).
+  // Duplicate fires are harmless: the advance echoes back locally before this can
+  // run again, and the fresh roundNum makes allPlayersBanked false.
   //
   // Gated on a live connection: `players` can be a stale cache replay while
   // offline, and nothing re-checks allPlayersBanked server-side. Acting on stale
@@ -107,6 +124,7 @@ export default function Game({ code, game, players, uid, connection }: GameProps
     const captured = game.roundTotal;
     try {
       await bank(code, game.roundNum);
+      setOptimisticBankRound(game.roundNum);
       setToast({ severity: 'success', text: `Banked +${captured}!` });
       if (typeof navigator !== 'undefined') navigator.vibrate?.(80);
     } catch (e) {
