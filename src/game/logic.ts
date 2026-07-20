@@ -54,6 +54,19 @@ export function prevSeat(current: number, ring: number[]): number {
   return behind.length > 0 ? Math.max(...behind) : Math.max(...ring);
 }
 
+// The seat physically rolling now: the first still-in-play seat at or after the
+// dice position, wrapping. turnSeat is only *where the dice sits* — it can name
+// a seat whose player has banked, and the dice passes straight on through them —
+// so the ring of seats still in play is what turns that position into a roller.
+// Returns the position unchanged when nobody is in play (the round is over
+// anyway). This is the seat-level twin of currentTurnPlayer, so the pointer the
+// rules advance and the roller the screen shows can never drift apart.
+export function currentSeat(position: number, inPlay: number[]): number {
+  if (inPlay.length === 0) return position;
+  const atOrAfter = inPlay.filter((seat) => seat >= position);
+  return atOrAfter.length > 0 ? Math.min(...atOrAfter) : Math.min(...inPlay);
+}
+
 export function recomputeRound(rolls: RollAction[]): { roundTotal: number; rollNum: number } {
   let roundTotal = 0;
   let rollNum = 1;
@@ -71,10 +84,12 @@ export function recomputeRound(rolls: RollAction[]): { roundTotal: number; rollN
 }
 
 // The dice keep going round the table across the round boundary — they do NOT
-// come back to seat 0. `turnSeat` is whoever rolls next, so whether the boundary
-// advances it depends on why the round ended:
-//   bust      — the seat it names just rolled the 7, so hand on to the next one
-//   all banked — nobody rolled, so that seat is still owed its turn; leave it
+// come back to seat 0. The caller passes the already-advanced dice position, so
+// endRound just records it; how that position was reached differs by why the
+// round ended:
+//   bust       — the buster's roll pushed the dice one seat over the full table
+//   all banked — no new roll, so the dice stays parked one seat past the last
+//                roller, which is exactly where the next round should open
 function endRound(
   game: GameDoc,
   lastAction: LastAction,
@@ -108,16 +123,18 @@ function endRound(
 // A doubles call counts as that seat's turn too.
 export function applyRoll(game: GameDoc, value: number, turn: Turn = NO_TURN): GameDoc {
   if (game.status !== 'active') return game;
-  const seat = game.turnSeat ?? 0;
+  // Advance from whoever actually rolls — the stored pointer may be parked on a
+  // banked seat, so resolve the real roller first — and move the dice one seat
+  // over the FULL table. Counting banked seats as positions the dice travels
+  // through is what makes the pointer land correctly for both the next roller
+  // this round and the opener of the next one; advancing over only the in-play
+  // ring would stick on a lone survivor and skip players who banked early.
+  const roller = currentSeat(game.turnSeat ?? 0, turn.inPlay);
+  const dice = nextSeat(roller, turn.seats);
   if (value === 7 && game.rollNum > 3) {
     // Whoever busted has had their go; the next round opens on the seat after
     // them, over the full table since everyone is unbanked again.
-    return endRound(
-      game,
-      { type: 'bust', value: 7 },
-      { rolls: game.rolls },
-      nextSeat(seat, turn.seats)
-    );
+    return endRound(game, { type: 'bust', value: 7 }, { rolls: game.rolls }, dice);
   }
   const rolls: RollAction[] = [...game.rolls, { type: 'roll', value }];
   return {
@@ -125,27 +142,30 @@ export function applyRoll(game: GameDoc, value: number, turn: Turn = NO_TURN): G
     rolls,
     ...recomputeRound(rolls),
     lastAction: { type: 'roll', value },
-    turnSeat: nextSeat(seat, turn.inPlay),
+    turnSeat: dice,
   };
 }
 
 export function applyDoubles(game: GameDoc, turn: Turn = NO_TURN): GameDoc {
   if (game.status !== 'active' || game.rollNum <= 3) return game;
+  const roller = currentSeat(game.turnSeat ?? 0, turn.inPlay);
   const rolls: RollAction[] = [...game.rolls, { type: 'doubles' }];
   return {
     ...game,
     rolls,
     ...recomputeRound(rolls),
     lastAction: { type: 'doubles' },
-    turnSeat: nextSeat(game.turnSeat ?? 0, turn.inPlay),
+    turnSeat: nextSeat(roller, turn.seats),
   };
 }
 
 // Round end triggered by every player having banked. Clears bustSnapshot:
 // undoing across an all-banked round end would just re-trigger the advance.
 //
-// turnSeat is carried over untouched: nobody rolled it away, so the seat it
-// names opens the next round still owed the turn it never got.
+// The dice position is carried over untouched. No one rolled to end this round,
+// so the dice is still parked one seat past the last roller — a roll always
+// pushes it over the full table, even when a lone survivor is rolling on their
+// own — which is exactly the seat that should open the next round.
 export function advanceRound(game: GameDoc): GameDoc {
   if (game.status !== 'active') return game;
   return endRound(game, { type: 'roundStart' }, null, game.turnSeat ?? 0);
@@ -169,7 +189,9 @@ export function undoLast(game: GameDoc, turn: Turn = NO_TURN): GameDoc | null {
       rolls,
       ...recomputeRound(rolls),
       lastAction: lastActionFor(rolls),
-      turnSeat: prevSeat(game.turnSeat ?? 0, turn.inPlay),
+      // The forward move parked the dice one seat past the roller over the full
+      // table; step back over the same ring to put that roller up again.
+      turnSeat: prevSeat(game.turnSeat ?? 0, turn.seats),
     };
   }
   if (game.lastAction?.type === 'bust' && game.bustSnapshot && game.roundNum > 1) {
@@ -210,12 +232,13 @@ export function turnContext(game: GameDoc, orderedPlayers: PlayerDoc[]): Turn {
   };
 }
 
-// Who physically rolls next. Starts at the stored pointer and walks forward
-// past anyone banked, which is what covers the case the pointer cannot: a
-// player banking on their own turn. bank() is a player-side transaction and the
-// rules forbid it writing the game doc, so the pointer simply cannot move
-// there — resolving it at render time instead costs nothing and needs no
-// permission. Null once everyone has banked.
+// Who physically rolls next. Resolves the dice position (which may sit on a
+// banked seat) to the first still-in-play seat at or after it — the same
+// walk-forward currentSeat does, over players. This is what covers the case the
+// stored pointer cannot: a player banking on their own turn. bank() is a
+// player-side transaction and the rules forbid it writing the game doc, so the
+// pointer cannot move there — resolving it at render time instead costs nothing
+// and needs no permission. Null once everyone has banked.
 export function currentTurnPlayer(
   game: GameDoc,
   orderedPlayers: PlayerDoc[]
@@ -225,16 +248,12 @@ export function currentTurnPlayer(
     player,
     seat: player.order ?? index,
   }));
-  const from = game.turnSeat ?? 0;
-  // Ordered so the walk starts at `from` and wraps exactly once.
-  const ring = [...seated].sort((a, b) => a.seat - b.seat);
-  const startIndex = ring.findIndex((entry) => entry.seat >= from);
-  const offset = startIndex === -1 ? 0 : startIndex;
-  for (let i = 0; i < ring.length; i++) {
-    const entry = ring[(offset + i) % ring.length];
-    if (!hasBankedThisRound(game, entry.player)) return entry.player;
-  }
-  return null;
+  const inPlay = seated
+    .filter(({ player }) => !hasBankedThisRound(game, player))
+    .map(({ seat }) => seat);
+  if (inPlay.length === 0) return null;
+  const seat = currentSeat(game.turnSeat ?? 0, inPlay);
+  return seated.find((entry) => entry.seat === seat)?.player ?? null;
 }
 
 export function allPlayersBanked(game: GameDoc, players: PlayerDoc[]): boolean {
