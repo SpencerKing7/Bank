@@ -12,6 +12,8 @@ import {
 } from '@mui/material';
 import BankButton, { BankState } from '../components/BankButton';
 import EndGameButton from '../components/EndGameButton';
+import KeepAwakeToggle from '../components/KeepAwakeToggle';
+import MoneyRain from '../components/MoneyRain';
 import NumberGrid from '../components/NumberGrid';
 import RoundHeader from '../components/RoundHeader';
 import RoundTotal from '../components/RoundTotal';
@@ -19,11 +21,15 @@ import StandingsList from '../components/StandingsList';
 import {
   allPlayersBanked,
   canBank,
+  currentTurnPlayer,
   hasBankedThisRound,
+  leaderGap,
+  turnContext,
   undoLast,
 } from '../game/logic';
 import { GameDoc, PlayerDoc } from '../game/types';
 import { Connection } from '../hooks/useGame';
+import { useWakeLock } from '../hooks/useWakeLock';
 import {
   advanceRoundNow,
   AlreadyBankedError,
@@ -82,6 +88,10 @@ export default function Game({ code, game, players: rawPlayers, uid, connection 
   // bank for the current round; the server echo (matching bankedRound) supersedes
   // it, and a new roundNum makes it stale on its own.
   const [optimisticBankRound, setOptimisticBankRound] = useState<number | null>(null);
+  // The round whose bank is currently raining money. Keyed on round rather than
+  // a bare boolean so a re-render can't restart the animation mid-fall.
+  const [rainRound, setRainRound] = useState<number | null>(null);
+  const wakeLock = useWakeLock();
   const players =
     optimisticBankRound === game.roundNum
       ? rawPlayers.map((p) =>
@@ -111,9 +121,22 @@ export default function Game({ code, game, players: rawPlayers, uid, connection 
     }
   }, [isHost, game, players, code, connection]);
 
+  // Money rain is purely decorative, so it cleans itself up on a timer rather
+  // than waiting on anything from Firestore.
+  useEffect(() => {
+    if (rainRound === null) return;
+    const timer = setTimeout(() => setRainRound(null), 1600);
+    return () => clearTimeout(timer);
+  }, [rainRound]);
+
   if (!me) return null;
 
   const bankedCount = players.filter((p) => hasBankedThisRound(game, p)).length;
+  // Before anyone has scored, everybody is "leading" — which is noise, not
+  // information. Hold the whole readout back until there's a real lead.
+  const scoringStarted = players.some((p) => p.points > 0);
+  const gap = leaderGap(players, me);
+  const turnPlayer = currentTurnPlayer(game, players);
   const bankState: BankState = hasBankedThisRound(game, me)
     ? 'banked'
     : canBank(game, me)
@@ -126,6 +149,7 @@ export default function Game({ code, game, players: rawPlayers, uid, connection 
       await bank(code, game.roundNum);
       setOptimisticBankRound(game.roundNum);
       setToast({ severity: 'success', text: `Banked +${captured}!` });
+      setRainRound(game.roundNum);
       if (typeof navigator !== 'undefined') navigator.vibrate?.(80);
     } catch (e) {
       if (e instanceof BankTooLateError) {
@@ -138,10 +162,11 @@ export default function Game({ code, game, players: rawPlayers, uid, connection 
     }
   };
 
-  const handleRoll = (value: number) => recordRoll(code, game, value).catch(() => {});
-  const handleDoubles = () => recordDoubles(code, game).catch(() => {});
-  const handleUndo = () => undoLastRoll(code, game).catch(() => {});
-  const canUndo = undoLast(game) !== null;
+  const turn = turnContext(game, players);
+  const handleRoll = (value: number) => recordRoll(code, game, value, turn).catch(() => {});
+  const handleDoubles = () => recordDoubles(code, game, turn).catch(() => {});
+  const handleUndo = () => undoLastRoll(code, game, turn).catch(() => {});
+  const canUndo = undoLast(game, turn) !== null;
 
   return (
     <Container
@@ -159,8 +184,10 @@ export default function Game({ code, game, players: rawPlayers, uid, connection 
     >
       <RoundHeader
         game={game}
+        players={players}
+        uid={uid}
         bankedCount={bankedCount}
-        playerCount={players.length}
+        turnPlayer={turnPlayer}
         connection={connection}
         onOpenStandings={() => setStandingsOpen(true)}
       />
@@ -170,6 +197,15 @@ export default function Game({ code, game, players: rawPlayers, uid, connection 
           {/* Hero stays compact so the roll pad, which is what the host
               actually touches, gets the leftover height. */}
           <RoundTotal game={game} compact />
+          {/* The host taps the pad and then looks up — without this they have
+              no read-back of what they actually entered. */}
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            sx={{ textAlign: 'center', minHeight: 24, flex: '0 0 auto' }}
+          >
+            {lastActionText(game)}
+          </Typography>
           <NumberGrid rollNum={game.rollNum} onRoll={handleRoll} onDoubles={handleDoubles} />
           <Button
             variant="text"
@@ -207,7 +243,7 @@ export default function Game({ code, game, players: rawPlayers, uid, connection 
           {/* The list scrolls inside its own box: a big party must never push
               the BANKED button off the bottom of the viewport. */}
           <Box sx={{ flex: '1 1 auto', minHeight: 0, overflowY: 'auto', mt: 0.5 }}>
-            <StandingsList players={players} uid={uid} game={game} />
+            <StandingsList players={players} uid={uid} game={game} turnPlayerId={turnPlayer?.id ?? null} />
           </Box>
         </Box>
       ) : (
@@ -242,6 +278,17 @@ export default function Game({ code, game, players: rawPlayers, uid, connection 
           sx={{ textAlign: 'center', mt: 0.5 }}
         >
           Your score: <strong>{me.points}</strong>
+          {scoringStarted && ' · '}
+          {scoringStarted &&
+            (gap ? (
+              <Box component="span" sx={{ color: 'warning.main', fontWeight: 700 }}>
+                {gap.behind} behind {gap.leader.name}
+              </Box>
+            ) : (
+              <Box component="span" sx={{ color: 'secondary.main', fontWeight: 700 }}>
+                you’re leading
+              </Box>
+            ))}
         </Typography>
       </Box>
 
@@ -257,16 +304,21 @@ export default function Game({ code, game, players: rawPlayers, uid, connection 
           <Typography variant="h6" gutterBottom>
             Standings
           </Typography>
-          <StandingsList players={players} uid={uid} game={game} />
+          <StandingsList players={players} uid={uid} game={game} turnPlayerId={turnPlayer?.id ?? null} />
+          <Box sx={{ mt: 1, pt: 1, borderTop: '1px solid', borderColor: 'divider' }}>
+            <KeepAwakeToggle wakeLock={wakeLock} />
+          </Box>
           {/* Destructive and rare — tucked in here rather than sitting next to
               BANK, where it cost a row of height and invited mis-taps. */}
           {isHost && (
-            <Box sx={{ mt: 2, pt: 2, borderTop: '1px solid', borderColor: 'divider', display: 'flex' }}>
+            <Box sx={{ mt: 1, pt: 2, borderTop: '1px solid', borderColor: 'divider', display: 'flex' }}>
               <EndGameButton code={code} />
             </Box>
           )}
         </Box>
       </SwipeableDrawer>
+
+      {rainRound !== null && <MoneyRain />}
 
       <Snackbar
         open={toast !== null}

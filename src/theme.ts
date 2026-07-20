@@ -129,7 +129,9 @@ export const theme = createTheme({
       fontWeight: 700,
       letterSpacing: '0.01em',
     },
-    // overline — the "ROUND 3/15 · ROLL 4" strip above the total
+    // overline — the "· ROLL 4" tail beside the round counter, and small
+    // section labels ("Game code"). The round counter itself is display-font
+    // and set inline in RoundHeader.
     overline: {
       fontSize: '0.8125rem',
       fontWeight: 700,
@@ -180,6 +182,23 @@ export const theme = createTheme({
         @keyframes winnerGlow {
           0%, 100% { text-shadow: 0 0 24px rgba(255, 201, 74, 0.45); }
           50% { text-shadow: 0 0 56px rgba(255, 201, 74, 0.85); }
+        }
+        /* The FINAL ROUND chip breathes for as long as the round lasts. */
+        @keyframes finalRoundPulse {
+          0%, 100% {
+            box-shadow: 0 0 0 rgba(255, 201, 74, 0);
+            border-color: rgba(255, 201, 74, 0.55);
+          }
+          50% {
+            box-shadow: 0 0 20px rgba(255, 201, 74, 0.5);
+            border-color: rgba(255, 201, 74, 1);
+          }
+        }
+        /* One-shot gold wash across the viewport on entering the last round. */
+        @keyframes finalRoundSweep {
+          0% { opacity: 0; transform: translateY(-100%); }
+          35% { opacity: 1; }
+          100% { opacity: 0; transform: translateY(100%); }
         }
         @media (prefers-reduced-motion: reduce) {
           *, *::before, *::after {

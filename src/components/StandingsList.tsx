@@ -1,4 +1,5 @@
 import React from 'react';
+import CasinoIcon from '@mui/icons-material/Casino';
 import { Box, Chip, Typography } from '@mui/material';
 import { hasBankedThisRound, standings } from '../game/logic';
 import { GameDoc, PlayerDoc } from '../game/types';
@@ -8,12 +9,19 @@ interface StandingsListProps {
   players: PlayerDoc[];
   uid: string;
   game?: GameDoc; // when present (mid-game), shows banked-this-round chips
+  turnPlayerId?: string | null; // marks whoever is holding the dice
   medals?: boolean; // game-over mode: gold/silver/bronze rank colors
 }
 
 const medalColors = ['#FFC94A', '#B9C4BE', '#D9915B'];
 
-export default function StandingsList({ players, uid, game, medals = false }: StandingsListProps) {
+export default function StandingsList({
+  players,
+  uid,
+  game,
+  turnPlayerId = null,
+  medals = false,
+}: StandingsListProps) {
   const ranked = standings(players);
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
@@ -48,6 +56,12 @@ export default function StandingsList({ players, uid, game, medals = false }: St
               {player.name}
               {isMe ? ' (you)' : ''}
             </Typography>
+            {player.id === turnPlayerId && (
+              <CasinoIcon
+                titleAccess="Rolling next"
+                sx={{ fontSize: 18, color: 'secondary.main', flexShrink: 0 }}
+              />
+            )}
             {game && hasBankedThisRound(game, player) && (
               <Chip size="small" color="success" label="Banked" />
             )}

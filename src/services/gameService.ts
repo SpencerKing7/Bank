@@ -20,6 +20,7 @@ import {
   applyDoubles,
   applyRoll,
   initialGameDoc,
+  Turn,
   undoLast,
 } from '../game/logic';
 import { GameDoc, PlayerDoc } from '../game/types';
@@ -67,6 +68,7 @@ function gameUpdateFields(game: GameDoc) {
     rolls: game.rolls,
     bustSnapshot: game.bustSnapshot,
     lastAction: game.lastAction,
+    turnSeat: game.turnSeat ?? 0,
   };
 }
 
@@ -104,6 +106,7 @@ export async function createGame(hostName: string, totalRounds: number): Promise
       name: hostName,
       points: 0,
       bankedRound: 0,
+      order: 0, // the host is always seat 0 until they drag themselves elsewhere
       joinedAt: serverTimestamp(),
     });
     await batch.commit();
@@ -129,11 +132,18 @@ export async function createGame(hostName: string, totalRounds: number): Promise
 // rather than let it through — a rejoining setDoc carries a fresh joinedAt,
 // which the update rule's hasOnly(['points','bankedRound']) refuses. So the
 // read is the fast path and the rules are what actually protect the points.
+// The roster read rides along in the same Promise.all, so claiming a seat costs
+// no extra round trip. It is not a lock: two people joining within the same
+// trip both count N players and both claim seat N. That is survivable rather
+// than corrupting — sortPlayers breaks the tie on joinedAt, and the host can
+// drag the order straight afterwards — so it is not worth a transaction on the
+// path where joining has to feel instant.
 export async function joinGame(code: string, name: string): Promise<void> {
   const uid = requireUid();
-  const [gameSnap, playerSnap] = await Promise.all([
+  const [gameSnap, playerSnap, playersSnap] = await Promise.all([
     getDoc(gameRef(code)),
     getDoc(playerRef(code, uid)),
+    getDocs(collection(db, 'games', code, 'players')),
   ]);
   if (!gameSnap.exists()) throw new GameNotFoundError();
   if (playerSnap.exists()) return;
@@ -144,8 +154,38 @@ export async function joinGame(code: string, name: string): Promise<void> {
     name,
     points: 0,
     bankedRound: 0,
+    order: playersSnap.size,
     joinedAt: serverTimestamp(),
   });
+}
+
+// Host-only. Writes every seat in one batch so the roster never renders
+// half-reordered, and so a dropped connection can't leave two players sharing
+// a seat. Renumbers from 0, which is also what closes the gap after a removal.
+export async function reorderPlayers(code: string, orderedIds: string[]): Promise<void> {
+  requireUid();
+  const batch = writeBatch(db);
+  orderedIds.forEach((id, index) => {
+    batch.update(playerRef(code, id), { order: index });
+  });
+  await batch.commit();
+}
+
+// Host-only (rules allow it because endGame's cleanup needs the same
+// permission). `remainingIds` must already exclude the removed player — the
+// delete and the renumber go in one batch so seats stay contiguous.
+export async function removePlayer(
+  code: string,
+  uid: string,
+  remainingIds: string[]
+): Promise<void> {
+  requireUid();
+  const batch = writeBatch(db);
+  batch.delete(playerRef(code, uid));
+  remainingIds.forEach((id, index) => {
+    batch.update(playerRef(code, id), { order: index });
+  });
+  await batch.commit();
 }
 
 export async function startGame(code: string, game: GameDoc): Promise<void> {
@@ -183,16 +223,24 @@ async function hostWrite(
   await updateDoc(gameRef(code), gameUpdateFields(next));
 }
 
-export function recordRoll(code: string, game: GameDoc, value: number): Promise<void> {
-  return hostWrite(code, game, (g) => applyRoll(g, value));
+// `turn` is the two seat rings for this round (logic.turnContext). The caller
+// supplies it because only the screen has the player list — keeping logic.ts
+// free of the document shape.
+export function recordRoll(
+  code: string,
+  game: GameDoc,
+  value: number,
+  turn: Turn
+): Promise<void> {
+  return hostWrite(code, game, (g) => applyRoll(g, value, turn));
 }
 
-export function recordDoubles(code: string, game: GameDoc): Promise<void> {
-  return hostWrite(code, game, applyDoubles);
+export function recordDoubles(code: string, game: GameDoc, turn: Turn): Promise<void> {
+  return hostWrite(code, game, (g) => applyDoubles(g, turn));
 }
 
-export function undoLastRoll(code: string, game: GameDoc): Promise<void> {
-  return hostWrite(code, game, undoLast);
+export function undoLastRoll(code: string, game: GameDoc, turn: Turn): Promise<void> {
+  return hostWrite(code, game, (g) => undoLast(g, turn));
 }
 
 // No roundNum precondition needed any more. The caller's effect can fire twice
@@ -260,6 +308,17 @@ export function subscribeToGame(
   );
 }
 
+// Seat order, with arrival order as the tiebreaker. The server sort stays on
+// joinedAt because Firestore drops documents that lack the orderBy field
+// entirely, and `order` is optional — a doc written before seats existed would
+// vanish from the lobby rather than sort last. So joinedAt does the query and
+// this does the seating, as a stable sort layered on top.
+function sortPlayers(players: PlayerDoc[]): PlayerDoc[] {
+  return [...players].sort(
+    (a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER)
+  );
+}
+
 export function subscribeToPlayers(
   code: string,
   onPlayers: (players: PlayerDoc[], fromCache: boolean) => void,
@@ -271,7 +330,7 @@ export function subscribeToPlayers(
     { includeMetadataChanges: true },
     (snap) =>
       onPlayers(
-        snap.docs.map((d) => ({ id: d.id, ...d.data() }) as PlayerDoc),
+        sortPlayers(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as PlayerDoc)),
         snap.metadata.fromCache
       ),
     onError

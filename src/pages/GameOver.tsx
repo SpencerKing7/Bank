@@ -1,10 +1,12 @@
 import React, { useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Box, Button, Container, Typography } from '@mui/material';
+import KeepAwakeToggle from '../components/KeepAwakeToggle';
 import StandingsList from '../components/StandingsList';
 import { standings } from '../game/logic';
 import { GameDoc, PlayerDoc } from '../game/types';
 import { clearActiveGameCode } from '../hooks/useSession';
+import { useWakeLock } from '../hooks/useWakeLock';
 
 interface GameOverProps {
   code: string;
@@ -62,6 +64,7 @@ function Confetti() {
 
 export default function GameOver({ game, players, uid }: GameOverProps) {
   const navigate = useNavigate();
+  const wakeLock = useWakeLock();
   const ranked = standings(players);
   const topScore = ranked[0]?.points ?? 0;
   const winners = ranked.filter((p) => p.points === topScore);
@@ -115,6 +118,10 @@ export default function GameOver({ game, players, uid }: GameOverProps) {
         <Box sx={{ overflowY: 'auto', minHeight: 0 }}>
           <StandingsList players={players} uid={uid} medals />
         </Box>
+      </Box>
+
+      <Box sx={{ flex: '0 0 auto' }}>
+        <KeepAwakeToggle wakeLock={wakeLock} />
       </Box>
 
       <Button variant="contained" fullWidth onClick={() => navigate('/')} sx={{ flex: '0 0 auto' }}>

@@ -1,9 +1,23 @@
 import React, { useState } from 'react';
-import { Alert, Box, Button, Chip, Container, Typography } from '@mui/material';
+import {
+  Alert,
+  Box,
+  Button,
+  Container,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
+  Typography,
+} from '@mui/material';
 import EndGameButton from '../components/EndGameButton';
+import KeepAwakeToggle from '../components/KeepAwakeToggle';
+import PlayerOrderList from '../components/PlayerOrderList';
 import { GameDoc, PlayerDoc } from '../game/types';
 import { Connection } from '../hooks/useGame';
-import { startGame } from '../services/gameService';
+import { useWakeLock } from '../hooks/useWakeLock';
+import { removePlayer, reorderPlayers, startGame } from '../services/gameService';
 
 interface LobbyProps {
   code: string;
@@ -23,6 +37,8 @@ export default function Lobby({ code, game, players, uid, connection = 'live' }:
   const host = players.find((p) => p.id === game.hostId);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pendingRemoval, setPendingRemoval] = useState<PlayerDoc | null>(null);
+  const wakeLock = useWakeLock();
 
   const handleStart = async () => {
     setBusy(true);
@@ -32,6 +48,25 @@ export default function Lobby({ code, game, players, uid, connection = 'live' }:
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not start the game');
       setBusy(false);
+    }
+  };
+
+  const handleReorder = (orderedIds: string[]) => {
+    // A player who joined mid-drag isn't in the dragged order. Append them so
+    // the batch still renumbers every seat and nobody is left sharing one.
+    const missing = players.map((p) => p.id).filter((id) => !orderedIds.includes(id));
+    reorderPlayers(code, [...orderedIds, ...missing]).catch(() =>
+      setError('Could not save the order — try again')
+    );
+  };
+
+  const handleRemove = async (player: PlayerDoc) => {
+    setPendingRemoval(null);
+    const remaining = players.filter((p) => p.id !== player.id).map((p) => p.id);
+    try {
+      await removePlayer(code, player.id, remaining);
+    } catch {
+      setError(`Could not remove ${player.name} — try again`);
     }
   };
 
@@ -75,17 +110,27 @@ export default function Lobby({ code, game, players, uid, connection = 'live' }:
             </Typography>
           )}
         </Box>
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, overflowY: 'auto', minHeight: 0 }}>
-          {players.map((player) => (
-            <Chip
-              key={player.id}
-              label={player.id === game.hostId ? `${player.name} · host` : player.name}
-              color={player.id === uid ? 'primary' : 'default'}
-              variant={player.id === uid ? 'filled' : 'outlined'}
-              sx={{ fontSize: '1rem', height: 40 }}
-            />
-          ))}
+        {/* Seat order is roll order once the game starts, so it's worth saying
+            so — otherwise dragging looks purely cosmetic. */}
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1, flex: '0 0 auto' }}>
+          {isHost ? 'Drag to set who rolls in what order' : 'Rolling order'}
+        </Typography>
+        <Box sx={{ overflowY: 'auto', minHeight: 0 }}>
+          <PlayerOrderList
+            players={players}
+            uid={uid}
+            hostId={game.hostId}
+            canManage={isHost}
+            onReorder={handleReorder}
+            onRemove={setPendingRemoval}
+          />
         </Box>
+      </Box>
+
+      {/* The lobby is where you've got a spare moment to set this — mid-game
+          it's buried in the standings drawer. */}
+      <Box sx={{ flex: '0 0 auto' }}>
+        <KeepAwakeToggle wakeLock={wakeLock} />
       </Box>
 
       {error && <Alert severity="error">{error}</Alert>}
@@ -102,6 +147,26 @@ export default function Lobby({ code, game, players, uid, connection = 'live' }:
           Waiting for {host?.name ?? 'the host'} to start…
         </Typography>
       )}
+
+      <Dialog open={pendingRemoval !== null} onClose={() => setPendingRemoval(null)}>
+        <DialogTitle>Remove {pendingRemoval?.name}?</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            They’ll be sent back to the join screen. They can rejoin with the game code if
+            it was a mistake.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPendingRemoval(null)}>Cancel</Button>
+          <Button
+            color="error"
+            variant="contained"
+            onClick={() => pendingRemoval && handleRemove(pendingRemoval)}
+          >
+            Remove
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 }

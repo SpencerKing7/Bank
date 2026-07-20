@@ -36,11 +36,12 @@ const activeGame: GameDoc = {
   rolls: [],
   bustSnapshot: null,
   lastAction: { type: 'roll', value: 5 },
+  turnSeat: 0,
 };
 
 const playersWith = (myBankedRound: number): PlayerDoc[] => [
-  { id: HOST, name: 'Hosty', points: 120, bankedRound: 0 },
-  { id: ME, name: 'Guesty', points: 140, bankedRound: myBankedRound },
+  { id: HOST, name: 'Hosty', points: 120, bankedRound: 0, order: 0 },
+  { id: ME, name: 'Guesty', points: 140, bankedRound: myBankedRound, order: 1 },
 ];
 
 // The standings drawer is always mounted but portals to document.body, so
@@ -70,7 +71,8 @@ describe('player screen after banking', () => {
     const view = renderAsPlayer(3); // banked in the current round
     // Standings are on screen now, not hidden behind the drawer.
     expect(view.getByText('Guesty (you)')).toBeInTheDocument();
-    expect(view.getByText('Hosty')).toBeInTheDocument();
+    // Twice: the player strip in the header and the standings row below it.
+    expect(view.getAllByText('Hosty')).toHaveLength(2);
     // Twice on purpose: the standings row and the "Your score" line under the
     // button. Everyone else's total appears once.
     expect(view.getAllByText('140')).toHaveLength(2); // my new total
@@ -85,5 +87,50 @@ describe('player screen after banking', () => {
     const view = renderAsPlayer(2);
     expect(view.queryByText('Guesty (you)')).not.toBeInTheDocument();
     expect(view.getByRole('button', { name: 'BANK' })).toBeEnabled();
+  });
+});
+
+describe('turn and standing readouts', () => {
+  it('names whoever holds the dice', () => {
+    const view = renderAsPlayer(0); // turnSeat 0 is the host, and nobody banked
+    expect(view.getByText('Hosty’s roll')).toBeInTheDocument();
+  });
+
+  // The case the stored pointer cannot cover on its own: banking is a
+  // player-side transaction that may not write the game doc, so turnSeat still
+  // points at the seat that just banked and the walk-forward has to move it.
+  it('moves the dice past a player who banks on their own turn', () => {
+    const view = within(
+      render(
+        <Game
+          code="ABCD"
+          game={activeGame} // turnSeat 0
+          players={[
+            { id: HOST, name: 'Hosty', points: 120, bankedRound: 3, order: 0 },
+            { id: ME, name: 'Guesty', points: 140, bankedRound: 0, order: 1 },
+          ]}
+          uid={ME}
+          connection="live"
+        />
+      ).container
+    );
+    expect(view.queryByText('Hosty’s roll')).not.toBeInTheDocument();
+    expect(view.getByText('Your roll')).toBeInTheDocument();
+  });
+
+  it('shows the gap to the leader, and says so when you are the leader', () => {
+    // Guesty leads on 140 to 120.
+    expect(within(
+      render(
+        <Game code="ABCD" game={activeGame} players={playersWith(0)} uid={ME} connection="live" />
+      ).container
+    ).getByText('you’re leading')).toBeInTheDocument();
+
+    // Same table seen from the host's side — 20 behind.
+    expect(within(
+      render(
+        <Game code="ABCD" game={activeGame} players={playersWith(0)} uid={HOST} connection="live" />
+      ).container
+    ).getByText('20 behind Guesty')).toBeInTheDocument();
   });
 });

@@ -1,4 +1,4 @@
-import { getDoc, setDoc, writeBatch } from 'firebase/firestore';
+import { getDoc, getDocs, setDoc, writeBatch } from 'firebase/firestore';
 import { generateGameCode } from '../game/codes';
 import { createGame, GameNotFoundError, joinGame } from './gameService';
 
@@ -6,7 +6,9 @@ import { createGame, GameNotFoundError, joinGame } from './gameService';
 // network calls to make, so the assertions are about the calls themselves.
 jest.mock('firebase/firestore', () => ({
   doc: (_db: unknown, ...path: string[]) => ({ path: path.join('/') }),
+  collection: (_db: unknown, ...path: string[]) => ({ path: path.join('/') }),
   getDoc: jest.fn(),
+  getDocs: jest.fn(),
   setDoc: jest.fn(() => Promise.resolve()),
   writeBatch: jest.fn(),
   serverTimestamp: () => 'server-timestamp',
@@ -20,11 +22,13 @@ jest.mock('../firebase', () => ({
 jest.mock('../game/codes', () => ({ generateGameCode: jest.fn() }));
 
 const mockGetDoc = getDoc as jest.Mock;
+const mockGetDocs = getDocs as jest.Mock;
 const mockSetDoc = setDoc as jest.Mock;
 const mockWriteBatch = writeBatch as jest.Mock;
 const mockGenerateGameCode = generateGameCode as jest.Mock;
 
 const GAME_PATH = 'games/ABCD';
+const PLAYERS_PATH = 'games/ABCD/players';
 const PLAYER_PATH = 'games/ABCD/players/me-uid';
 
 const snap = (exists: boolean) => ({ exists: () => exists });
@@ -38,8 +42,13 @@ function existing(...paths: string[]) {
 
 let batch: { set: jest.Mock; commit: jest.Mock };
 
+// The roster read only exists to pick a seat number, so `size` is all of it
+// that matters. Default to an empty table; tests that care set their own.
+const roster = (size: number) => ({ size });
+
 beforeEach(() => {
   mockGetDoc.mockReset();
+  mockGetDocs.mockReset().mockResolvedValue(roster(0));
   mockSetDoc.mockReset().mockResolvedValue(undefined);
   mockGenerateGameCode.mockReset();
   batch = { set: jest.fn(), commit: jest.fn().mockResolvedValue(undefined) };
@@ -58,8 +67,21 @@ describe('joinGame', () => {
       name: 'Ana',
       points: 0,
       bankedRound: 0,
+      order: 0,
       joinedAt: 'server-timestamp',
     });
+  });
+
+  // Seat order is roll order, so a joiner takes the next free seat rather than
+  // landing anywhere. Not a lock — see the note on joinGame — but it is what
+  // keeps the common case from needing the host to fix it by hand.
+  it('takes the seat after everyone already at the table', async () => {
+    existing(GAME_PATH);
+    mockGetDocs.mockResolvedValue(roster(3));
+
+    await joinGame('ABCD', 'Ana');
+
+    expect(mockSetDoc.mock.calls[0][1]).toMatchObject({ order: 3 });
   });
 
   // Firestore will create games/{code}/players/{uid} under a game doc that
@@ -82,10 +104,11 @@ describe('joinGame', () => {
     expect(mockSetDoc).not.toHaveBeenCalled();
   });
 
-  // The point of the refactor. Nothing orders these two reads, so they must go
-  // out together and cost one round trip, not two. Awaiting them one after the
-  // other would still pass every test above.
-  it('puts both reads in flight without waiting for either', () => {
+  // The point of the refactor. Nothing orders these reads, so they must go out
+  // together and cost one round trip, not three. Awaiting them one after the
+  // other would still pass every test above. The roster read joined them for
+  // the seat number and must not have cost a trip of its own.
+  it('puts all three reads in flight without waiting for any', () => {
     let settleGameRead = () => {};
     mockGetDoc.mockImplementation((ref: { path: string }) =>
       ref.path === GAME_PATH
@@ -97,9 +120,11 @@ describe('joinGame', () => {
 
     const joined = joinGame('ABCD', 'Ana');
 
-    // The game read has not come back, yet the player read is already gone.
+    // The game read has not come back, yet the other two are already gone.
     expect(mockGetDoc).toHaveBeenCalledTimes(2);
     expect(mockGetDoc.mock.calls.map((call) => call[0].path)).toEqual([GAME_PATH, PLAYER_PATH]);
+    expect(mockGetDocs).toHaveBeenCalledTimes(1);
+    expect(mockGetDocs.mock.calls[0][0]).toEqual({ path: PLAYERS_PATH });
 
     settleGameRead();
     return joined;
@@ -129,6 +154,7 @@ describe('createGame', () => {
       name: 'Ana',
       points: 0,
       bankedRound: 0,
+      order: 0,
       joinedAt: 'server-timestamp',
     });
   });
