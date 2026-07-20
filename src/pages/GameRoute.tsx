@@ -12,6 +12,7 @@ import {
   Typography,
 } from '@mui/material';
 import { useAnonymousAuth } from '../hooks/useAnonymousAuth';
+import { useForegroundSync } from '../hooks/useForegroundSync';
 import { useGame } from '../hooks/useGame';
 import {
   clearActiveGameCode,
@@ -90,6 +91,9 @@ export default function GameRoute() {
   const { code: rawCode } = useParams();
   const code = rawCode?.toUpperCase();
   const { uid, ready, error: authError } = useAnonymousAuth();
+  // Snap back to current state whenever the phone wakes or reconnects, so a
+  // player who locked their screen mid-round doesn't return to a stale total.
+  useForegroundSync();
   const { game, players, loading, notFound, ended, connection } = useGame(
     ready && uid && code ? code : undefined
   );
