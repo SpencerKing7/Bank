@@ -4,6 +4,7 @@ import {
   applyDoubles,
   applyRoll,
   canBank,
+  currentSeat,
   currentTurnPlayer,
   initialGameDoc,
   leaderGap,
@@ -232,6 +233,28 @@ describe('turn order', () => {
     });
   });
 
+  describe('currentSeat', () => {
+    it('names the seat at the dice position when its player is in play', () => {
+      expect(currentSeat(2, [0, 1, 2, 3])).toBe(2);
+    });
+
+    it('walks forward past a banked seat the dice is parked on', () => {
+      expect(currentSeat(1, [0, 2, 3])).toBe(2); // seat 1 banked
+    });
+
+    it('wraps to the lowest in-play seat when the position is past the end', () => {
+      expect(currentSeat(2, [0, 1])).toBe(0); // seats 2, 3 banked
+    });
+
+    it('holds on the sole survivor', () => {
+      expect(currentSeat(0, [3])).toBe(3);
+    });
+
+    it('returns the position unchanged when nobody is in play', () => {
+      expect(currentSeat(2, [])).toBe(2);
+    });
+  });
+
   const FULL: Turn = { seats: [0, 1, 2, 3], inPlay: [0, 1, 2, 3] };
 
   describe('turnContext', () => {
@@ -265,6 +288,66 @@ describe('turn order', () => {
     it('counts a doubles call as that seat’s turn', () => {
       const g = applyDoubles(rollMany(activeGame(), [5, 6, 8]), FULL);
       expect(g.turnSeat).toBe(1);
+    });
+
+    // Regression: banking out of turn leaves the stored pointer parked on a
+    // banked seat, behind whoever actually rolls. Advancing from the raw pointer
+    // used to land straight back on the roller (they appear to roll twice); the
+    // move now starts from the resolved roller instead.
+    it('advances past the real roller when the pointer lags on a banked seat', () => {
+      // Seats 0 and 1 have banked; the dice is parked on seat 0, seat 2 rolls.
+      const turn: Turn = { seats: [0, 1, 2, 3], inPlay: [2, 3] };
+      const g = applyRoll(activeGame({ turnSeat: 0, rollNum: 5 }), 4, turn);
+      expect(g.turnSeat).toBe(3); // seat 2 rolled → dice to seat 3, not back to 2
+    });
+
+    // The same situation end to end, read through the player list: after Cy
+    // rolls the dice must be on Dee, never on Cy again.
+    it('passes to the next unbanked player after a roll, not the roller again', () => {
+      const players = table([3, 3, 0, 0]); // Ann, Bo banked this round
+      let g = activeGame({ roundNum: 3, turnSeat: 0, rollNum: 5 });
+      const turn = turnContext(g, players); // seats 0-3, inPlay 2,3
+      expect(currentTurnPlayer(g, players)?.name).toBe('Cy');
+      g = applyRoll(g, 4, turn);
+      expect(currentTurnPlayer(g, players)?.name).toBe('Dee');
+    });
+  });
+
+  // A lone survivor is the case the old pointer got wrong on both exits: the
+  // in-play ring is just their own seat, so nextSeat stuck the dice on them, and
+  // neither busting nor banking then moved it off. It must hand on to the next
+  // seat over the full table (everyone is back next round).
+  describe('a lone survivor finishing the round', () => {
+    // Ann, Bo, Cy banked; only Dee (seat 3) is still rolling.
+    const survivors = () => table([3, 3, 3, 0]);
+
+    it('keeps the dice on the survivor while they roll on alone', () => {
+      let g = activeGame({ roundNum: 3, turnSeat: 0, rollNum: 6 });
+      const turn = turnContext(g, survivors()); // inPlay [3]
+      expect(currentTurnPlayer(g, survivors())?.name).toBe('Dee');
+      g = applyRoll(g, 5, turn);
+      expect(currentTurnPlayer(g, survivors())?.name).toBe('Dee');
+      // The dice is already parked one seat past Dee, ready for the boundary.
+      expect(g.turnSeat).toBe(0);
+    });
+
+    it('hands on to the next seat when the survivor banks (all-banked advance)', () => {
+      let g = activeGame({ roundNum: 3, turnSeat: 0, rollNum: 6 });
+      g = applyRoll(g, 5, turnContext(g, survivors())); // Dee rolls
+      // Dee now banks too → every player banked → the host advances the round.
+      g = advanceRound(g);
+      expect(g.roundNum).toBe(4);
+      expect(g.turnSeat).toBe(0);
+      // Everyone is back next round; the opener is Ann, the seat after Dee.
+      expect(currentTurnPlayer(g, table())?.name).toBe('Ann');
+    });
+
+    it('hands on to the next seat when the survivor busts', () => {
+      let g = activeGame({ roundNum: 3, turnSeat: 0, rollNum: 6 });
+      g = applyRoll(g, 7, turnContext(g, survivors())); // Dee busts
+      expect(g.roundNum).toBe(4);
+      expect(g.turnSeat).toBe(0);
+      expect(currentTurnPlayer(g, table())?.name).toBe('Ann');
     });
   });
 

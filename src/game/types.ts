@@ -23,11 +23,16 @@ export interface GameDoc {
   // Pre-bust roll log; lets the host undo an accidental bust 7.
   bustSnapshot: { rolls: RollAction[] } | null;
   lastAction: LastAction;
-  // Seat (PlayerDoc.order) of whoever physically rolls next. Advanced one
-  // eligible seat per roll, and it keeps travelling round the table across
-  // round boundaries rather than resetting. Stored rather than derived from
-  // rollNum: the eligible set shrinks as people bank, so a recomputed pointer
-  // would jump backwards mid-round.
+  // Where the dice sits: one seat past whoever last rolled, counted over the
+  // whole table (PlayerDoc.order). It can therefore name a seat whose player has
+  // since banked — the dice just passes straight through them. Whoever
+  // *physically* rolls is the first still-in-play seat at or after this one;
+  // currentSeat / currentTurnPlayer walk forward to find them. Advanced one seat
+  // over the full table on every roll, doubles, and bust, and left untouched
+  // when a round ends by everyone banking (it is already parked one seat past
+  // the last roller). It keeps travelling round the table across round
+  // boundaries rather than resetting. Stored rather than derived from rollNum,
+  // which does not know who has dropped out.
   turnSeat?: number;
   createdAt?: unknown; // Firestore Timestamp; opaque to game logic
 }
